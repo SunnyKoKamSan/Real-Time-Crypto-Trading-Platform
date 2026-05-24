@@ -1,0 +1,48 @@
+{
+  "name": "real-time-crypto-trading-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-cost real-time crypto paper trading platform with live market data, matching engine, ledger, WebSocket updates, and production-style observability.",
+  "type": "module",
+  "workspaces": [
+    "packages/domain",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "npm -w @rtctp/api run dev",
+    "dev:web": "npm -w @rtctp/web run dev",
+    "build": "npm -w @rtctp/domain run build && npm -w @rtctp/api run build && npm -w @rtctp/web run build",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "npm -w @rtctp/domain run build && npm -w @rtctp/api run typecheck && npm -w @rtctp/web run typecheck",
+    "test": "npm -w @rtctp/domain run build && npm -w @rtctp/api run test && npm -w @rtctp/web run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky || true"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,cjs,mjs,json,md,css,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@typescript-eslint/eslint-plugin": "^8.33.0",
+    "@typescript-eslint/parser": "^8.33.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
