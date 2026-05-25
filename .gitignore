@@ -16,7 +16,11 @@ coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+__pycache__/
+*.pyc
 
 data/
 tmp/
 
+docs/plan.md
+todo.md

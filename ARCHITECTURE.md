@@ -48,7 +48,10 @@ flowchart LR
 |   |   |-- src
 |   |   |   |-- modules
 |   |   |   |   |-- auth
+|   |   |   |   |-- audit
+|   |   |   |   |-- ledger
 |   |   |   |   |-- market-data
+|   |   |   |   |-- matching
 |   |   |   |   |-- orders
 |   |   |   |   |-- portfolio
 |   |   |   |   |-- users
@@ -89,6 +92,63 @@ flowchart LR
 |-- ARCHITECTURE.md
 `-- README.md
 ```
+
+## Week 1 Architecture Decisions
+
+Accepted ADRs live under `docs/adr`.
+
+- PostgreSQL is the source of truth.
+- Redis is for cache, rate limits, realtime coordination, and derived snapshots.
+- Redpanda is the local Kafka-compatible event broker.
+- Durable business events use a transactional outbox.
+- The product is paper trading only.
+- Drizzle is the selected PostgreSQL ORM/query layer.
+- The API and WebSocket gateway start in one process with modular boundaries.
+
+## Module Ownership Boundaries
+
+### API Modules
+
+| Module                | Owns                                                                      | Must not own                                                                   |
+| --------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `modules/auth`        | Register, login, refresh, logout, password hashing, token/session policy. | Trading balances or order permissions beyond identity claims.                  |
+| `modules/users`       | User profile and role queries.                                            | Password verification or ledger state.                                         |
+| `modules/market-data` | Provider adapters, normalized ticks, candles, provider health.            | User order state or balances.                                                  |
+| `modules/orders`      | Public order API, order validation, order state orchestration.            | Matching algorithm internals or direct ledger mutation without ledger service. |
+| `modules/matching`    | Deterministic price-time-priority matching and order-book rebuild logic.  | HTTP concerns, auth, or direct WebSocket fanout.                               |
+| `modules/ledger`      | Append-only balance, reserve, release, fill, fee, and adjustment entries. | Order matching policy.                                                         |
+| `modules/portfolio`   | Balance and position views derived from ledger state.                     | Historical ledger mutation.                                                    |
+| `modules/audit`       | Immutable security and trading audit records.                             | Business transaction decisions.                                                |
+| `modules/websocket`   | Client connections, subscriptions, heartbeat, fanout, backpressure.       | Durable business writes.                                                       |
+
+### Infrastructure Modules
+
+| Module            | Owns                                                                |
+| ----------------- | ------------------------------------------------------------------- |
+| `infra/db`        | Drizzle client, migrations, transaction helpers, repository wiring. |
+| `infra/redis`     | Redis connection, cache, rate limit, pub/sub or stream adapters.    |
+| `infra/redpanda`  | Producer/consumer clients, topic names, serialization helpers.      |
+| `infra/telemetry` | Structured logging, metrics, traces, correlation ID propagation.    |
+
+### Shared Domain Package
+
+`packages/domain` owns cross-workspace primitives only:
+
+- domain enums and Zod schemas.
+- event names and event envelope types.
+- shared API DTO and response envelope types.
+- pure invariant helpers for orders, trades, and ledger entries.
+
+It should not own database clients, HTTP controllers, React components, or process-level
+configuration.
+
+## API Standards
+
+Health probes can return plain JSON. All `/api/*` routes should use the response envelope documented
+in `docs/api.md`.
+
+External request payloads must be validated before module business logic. Request-linked logs,
+events, and WebSocket messages should carry the same correlation ID.
 
 ## Technology Choices
 

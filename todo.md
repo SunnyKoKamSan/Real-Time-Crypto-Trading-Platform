@@ -1,6 +1,6 @@
-# Initial Project Bootstrap (2026-05-24)
+# Delivery Backlog
 
-### Plan
+## Completed Bootstrap
 
 - [x] Create a local-first TypeScript monorepo for the trading platform.
 - [x] Add API, web, and shared-domain workspace packages.
@@ -8,97 +8,90 @@
 - [x] Add CI, Husky hooks, linting, type-checking, tests, and build scripts.
 - [x] Keep the first commit at prototype-bootstrap level instead of pretending the exchange is complete.
 
-### Review
+## Week 1 - Architecture Lock And Delivery Foundation
 
-- Initial scaffold contains a React trading workspace shell, Express API health/symbol endpoints, WebSocket gateway skeleton, shared domain types, local observability/storage containers, and project documentation.
-- Verification passed: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`.
-- Git target: push the initial commit to the `dev` branch of `SunnyKoKamSan/Real-Time-Crypto-Trading-Platform`.
+- [x] Add ADRs for PostgreSQL, Redis, Redpanda, outbox, paper trading, Drizzle, and process model.
+- [x] Add docs skeleton for runbooks, API, events, data model, benchmarks, and code review.
+- [x] Update README with current commands and current implementation status.
+- [x] Define API response envelope and correlation ID behavior.
+- [x] Add correlation IDs to API logs and `/api/*` responses.
+- [x] Refresh the dashboard shell to show foundation status and disabled trading gates.
+- [ ] Verify Docker Compose services start cleanly on the local machine. Attempted on 2026-05-25;
+      blocked because Docker daemon was not running.
 
-# Milestone 1 - Market Data Ingestion
+## Week 2 - Database Foundation
 
-### Plan
+- [ ] Install and configure Drizzle for PostgreSQL.
+- [ ] Add migration workflow and document commands.
+- [ ] Create schema for users, sessions, symbols, orders, trades, ledger entries, market ticks, candles, audit events, and outbox events.
+- [ ] Add repository transaction helper under `apps/api/src/infra/db`.
+- [ ] Seed prototype symbols and demo balances.
+- [ ] Add repository tests for core create/read paths.
+- [ ] Document schema decisions in `docs/data-model.md`.
 
-- [ ] Choose the first live market provider: Coinbase Advanced Trade WebSocket or Binance public streams.
-- [ ] Implement provider adapters behind a `MarketDataProvider` interface.
-- [ ] Normalize external ticks into internal `MarketTick` events.
-- [ ] Add reconnect with exponential backoff and provider health state.
-- [ ] Persist recent ticks and aggregate one-minute candles.
-- [ ] Broadcast live market ticks to the frontend over WebSocket.
+## Week 3 - Auth And Sessions
 
-### Review
-
-- Pending.
-
-# Milestone 2 - Auth And Demo Portfolio
-
-### Plan
-
-- [ ] Add PostgreSQL migrations for users, sessions, balances, and audit events.
-- [ ] Add email/password registration and login.
+- [ ] Add auth module folder and request schemas.
+- [ ] Implement register, login, refresh, and logout endpoints.
 - [ ] Hash passwords with Argon2 or bcrypt.
-- [ ] Add JWT access tokens and hashed refresh tokens.
-- [ ] Seed every new user with demo USD and crypto paper balances.
-- [ ] Add protected portfolio APIs and frontend portfolio panel.
+- [ ] Store refresh tokens hashed.
+- [ ] Add auth rate-limit strategy.
+- [ ] Add protected `GET /api/me`.
+- [ ] Add auth integration tests for success, validation, and failure paths.
 
-### Review
+## Week 4 - Market Data Ingestion
 
-- Pending.
+- [ ] Choose Coinbase or Binance as the first provider.
+- [ ] Define `MarketDataProvider` interface.
+- [ ] Normalize provider ticks into internal `MarketTickReceived` events.
+- [ ] Add reconnect with backoff and provider health state.
+- [ ] Persist recent ticks.
+- [ ] Aggregate one-minute candles.
+- [ ] Broadcast public market ticks over WebSocket.
 
-# Milestone 3 - Matching Engine
+## Week 5 - Realtime Gateway And Market UI
 
-### Plan
+- [ ] Add WebSocket subscription validation.
+- [ ] Add public channels for ticks, candles, order book, and system health.
+- [ ] Add heartbeat and disconnect handling.
+- [ ] Add frontend reconnect and stale-data states.
+- [ ] Replace fixture chart with live market data.
+- [ ] Add accessible chart fallback table.
 
-- [ ] Add order, trade, ledger, and outbox tables.
-- [ ] Implement limit orders and market orders.
-- [ ] Match orders with price-time priority.
-- [ ] Reserve balances on order acceptance.
-- [ ] Settle fills through append-only ledger entries.
-- [ ] Rebuild in-memory order books from PostgreSQL on startup.
-- [ ] Add unit tests for partial fills, cancellation, insufficient balance, and crossing orders.
+## Week 6 - Matching Engine Core
 
-### Review
+- [ ] Define pure order book data structures.
+- [ ] Implement price-time-priority matching.
+- [ ] Add deterministic tests for crossing orders.
+- [ ] Add partial-fill tests.
+- [ ] Add market-order tests.
+- [ ] Add cancellation behavior tests.
+- [ ] Add benchmark harness for matching throughput.
 
-- Pending.
+## Week 7 - Orders, Reserves, Ledger Settlement
 
-# Milestone 4 - Event-Driven Trading Flow
+- [ ] Implement transactional order placement.
+- [ ] Reserve cash or asset balances when orders are accepted.
+- [ ] Persist trades and ledger entries atomically.
+- [ ] Release unused reserves on cancellation.
+- [ ] Reject insufficient-balance orders with actionable errors.
+- [ ] Add portfolio read model from ledger entries.
+- [ ] Enable the frontend order form only after invariant tests pass.
 
-### Plan
+## Week 8 - Private Realtime Trading Flow
 
-- [ ] Publish durable business events through an outbox table.
-- [ ] Create Redpanda topics for orders, trades, ledger, market ticks, and dead-letter events.
-- [ ] Add Redis-backed WebSocket fanout for public and private channels.
-- [ ] Add idempotent consumers with retry and dead-letter handling.
-- [ ] Add correlation IDs across REST, events, logs, and WebSocket messages.
+- [ ] Authenticate private WebSocket subscriptions.
+- [ ] Publish user order updates.
+- [ ] Publish user trade updates.
+- [ ] Publish portfolio updates.
+- [ ] Add Redis-backed fanout for private channels.
+- [ ] Add frontend open orders, trades, and portfolio updates.
 
-### Review
+## Later Milestones
 
-- Pending.
-
-# Milestone 5 - Observability And Benchmarks
-
-### Plan
-
-- [ ] Add OpenTelemetry instrumentation for API, market ingest, matching, and WebSocket broadcast.
-- [ ] Add Prometheus metrics for latency, throughput, reconnects, and error counts.
-- [ ] Build Grafana dashboards and save screenshots for the README.
-- [ ] Add k6 tests for order placement and WebSocket fanout.
-- [ ] Document benchmark results in `docs/benchmarks.md`.
-
-### Review
-
-- Pending.
-
-# Milestone 6 - Portfolio Polish
-
-### Plan
-
-- [ ] Add architecture diagrams under `docs/`.
-- [ ] Add API examples and local runbook.
-- [ ] Add screenshots and a short demo video link.
-- [ ] Add code review checklist in `docs/code-review.md`.
-- [ ] Add CV bullet examples and interview explanation notes.
-- [ ] Verify `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and major e2e/load checks.
-
-### Review
-
-- Pending.
+- [ ] Add event outbox worker, idempotent consumers, retries, and dead-letter handling.
+- [ ] Add admin/dev console for feed health, event throughput, errors, and observability links.
+- [ ] Add OpenTelemetry traces, Prometheus metrics, and Grafana dashboards.
+- [ ] Add k6 load tests and document benchmark evidence.
+- [ ] Add security, accessibility, and invariant hardening pass.
+- [ ] Package final demo script, screenshots, runbooks, and CV/interview notes.

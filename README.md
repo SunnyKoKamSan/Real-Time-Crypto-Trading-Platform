@@ -111,7 +111,22 @@ Avoid:
 - paid deployment requirements
 - real-money trading features
 
-## Planned Local Environment
+## Current Status
+
+This repository is in the Week 1 foundation milestone. Implemented today:
+
+- npm workspaces for API, web, and shared domain package.
+- Express API with health, symbols, system info, request logging, and correlation IDs.
+- WebSocket skeleton at `/ws`.
+- React/Vite dashboard shell with fixture market data and explicit paper-trading status.
+- Docker Compose for PostgreSQL, Redis, Redpanda, Prometheus, Grafana, and Jaeger.
+- CI workflow running lint, typecheck, tests, and build.
+- Architecture decision records and runbook skeletons under `docs/`.
+
+Not implemented yet: auth, database migrations, live market ingestion, real order placement,
+matching, ledger settlement, outbox workers, and production observability dashboards.
+
+## Local Environment
 
 Required tools:
 
@@ -126,16 +141,36 @@ Recommended tools:
 - Postman, Insomnia, or Bruno for API testing
 - VS Code with ESLint and Prettier extensions
 
-## Planned Commands
+## Current Commands
 
-These commands define the target developer experience:
+Install dependencies and create a local environment file:
 
 ```bash
 npm install
 cp .env.example .env
-docker compose up --build
-npm run dev
 ```
+
+Start infrastructure:
+
+```bash
+docker compose up -d
+```
+
+Start the API and web app in separate terminals:
+
+```bash
+npm run dev:api
+npm run dev:web
+```
+
+Local URLs:
+
+- API: `http://localhost:4000`
+- Web: `http://127.0.0.1:5173`
+- WebSocket: `ws://localhost:4000/ws`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000`
+- Jaeger: `http://localhost:16686`
 
 Quality checks:
 
@@ -152,6 +187,8 @@ Major milestone checks:
 npm run test:e2e
 npm run test:load
 ```
+
+These e2e and load-test scripts are planned but not implemented yet.
 
 ## Architecture
 
@@ -273,4 +310,10 @@ Built a real-time crypto paper-trading platform with live WebSocket market data,
 
 - [SPEC.md](SPEC.md) defines product scope, features, data model, milestones, and done criteria.
 - [ARCHITECTURE.md](ARCHITECTURE.md) explains system design, service boundaries, database strategy, events, observability, and quality gates.
-
+- [docs/api.md](docs/api.md) defines current API routes, response envelopes, and error standards.
+- [docs/events.md](docs/events.md) defines event envelopes, topics, and outbox rules.
+- [docs/data-model.md](docs/data-model.md) captures the planned Week 2 schema and invariants.
+- [docs/code-review.md](docs/code-review.md) provides the review checklist.
+- [docs/runbooks/local-development.md](docs/runbooks/local-development.md) describes local setup and quality commands.
+- [docs/runbooks/troubleshooting.md](docs/runbooks/troubleshooting.md) covers common local failures.
+- [docs/adr](docs/adr) stores accepted architecture decisions.

@@ -26,6 +26,29 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+export interface ApiMeta {
+  correlationId: string;
+  timestamp: string;
+}
+
+export interface ApiSuccess<TData> {
+  ok: true;
+  data: TData;
+  meta: ApiMeta;
+}
+
+export interface ApiError {
+  ok: false;
+  error: {
+    code: 'VALIDATION_ERROR' | 'AUTH_REQUIRED' | 'FORBIDDEN' | 'NOT_FOUND' | 'INTERNAL_ERROR';
+    message: string;
+    correlationId: string;
+    details?: unknown;
+  };
+}
+
+export type ApiEnvelope<TData> = ApiSuccess<TData> | ApiError;
+
 export interface MarketTick {
   symbol: TradingSymbol;
   price: string;
@@ -36,4 +59,3 @@ export interface MarketTick {
 export function isSupportedSymbol(value: string): value is TradingSymbol {
   return SUPPORTED_SYMBOLS.includes(value as TradingSymbol);
 }
-

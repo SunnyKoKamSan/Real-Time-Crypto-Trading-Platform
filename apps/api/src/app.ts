@@ -1,8 +1,47 @@
+import { randomUUID } from 'node:crypto';
 import cors from 'cors';
-import express from 'express';
-import { SUPPORTED_SYMBOLS, type HealthResponse } from '@rtctp/domain';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import {
+  SUPPORTED_SYMBOLS,
+  type ApiError,
+  type ApiSuccess,
+  type HealthResponse,
+} from '@rtctp/domain';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
+
+const correlationHeader = 'x-correlation-id';
+
+function readCorrelationId(request: Request): string {
+  const headerValue = request.header(correlationHeader);
+
+  if (headerValue && headerValue.length <= 128) {
+    return headerValue;
+  }
+
+  return randomUUID();
+}
+
+function sendSuccess<TData>(response: Response, data: TData) {
+  const correlationId = response.locals.correlationId as string;
+  const body: ApiSuccess<TData> = {
+    ok: true,
+    data,
+    meta: {
+      correlationId,
+      timestamp: new Date().toISOString(),
+    },
+  };
+
+  response.json(body);
+}
+
+function sendError(response: Response, statusCode: number, error: ApiError['error']) {
+  response.status(statusCode).json({
+    ok: false,
+    error,
+  } satisfies ApiError);
+}
 
 export function createApp() {
   const app = express();
@@ -16,11 +55,16 @@ export function createApp() {
   );
   app.use(express.json({ limit: '1mb' }));
   app.use((request, response, next) => {
+    const correlationId = readCorrelationId(request);
     const startedAt = performance.now();
+
+    response.locals.correlationId = correlationId;
+    response.setHeader(correlationHeader, correlationId);
 
     response.on('finish', () => {
       logger.info(
         {
+          correlationId,
           method: request.method,
           path: request.path,
           statusCode: response.statusCode,
@@ -45,7 +89,7 @@ export function createApp() {
   });
 
   app.get('/api/symbols', (_request, response) => {
-    response.json({
+    sendSuccess(response, {
       symbols: SUPPORTED_SYMBOLS.map((symbol) => ({
         symbol,
         baseAsset: symbol.split('-')[0],
@@ -55,11 +99,41 @@ export function createApp() {
   });
 
   app.get('/api/system/info', (_request, response) => {
-    response.json({
+    sendSuccess(response, {
       name: 'Real-Time Crypto Trading Platform',
       mode: 'paper-trading',
       costModel: 'local-first-zero-cost',
       services: ['postgresql', 'redis', 'redpanda', 'prometheus', 'grafana', 'jaeger'],
+    });
+  });
+
+  app.use((request, response) => {
+    const correlationId = response.locals.correlationId as string;
+
+    sendError(response, 404, {
+      code: 'NOT_FOUND',
+      message: `No route matches ${request.method} ${request.path}.`,
+      correlationId,
+    });
+  });
+
+  app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+    void _next;
+
+    const correlationId = response.locals.correlationId as string;
+
+    logger.error(
+      {
+        correlationId,
+        err: error,
+      },
+      'request failed',
+    );
+
+    sendError(response, 500, {
+      code: 'INTERNAL_ERROR',
+      message: 'The API could not complete the request.',
+      correlationId,
     });
   });
 
