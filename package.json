@@ -12,6 +12,9 @@
   "scripts": {
     "dev:api": "npm -w @rtctp/api run dev",
     "dev:web": "npm -w @rtctp/web run dev",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "npm -w @rtctp/api run db:migrate",
+    "db:seed": "npm -w @rtctp/api run db:seed",
     "build": "npm -w @rtctp/domain run build && npm -w @rtctp/api run build && npm -w @rtctp/web run build",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "npm -w @rtctp/domain run build && npm -w @rtctp/api run typecheck && npm -w @rtctp/web run typecheck",
@@ -33,6 +36,7 @@
     "@commitlint/config-conventional": "^19.8.1",
     "@typescript-eslint/eslint-plugin": "^8.33.0",
     "@typescript-eslint/parser": "^8.33.0",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-react-hooks": "^5.2.0",
