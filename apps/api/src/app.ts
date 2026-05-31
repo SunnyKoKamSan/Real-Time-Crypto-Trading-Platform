@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import { SUPPORTED_SYMBOLS, type HealthResponse } from '@rtctp/domain';
 import { env } from './config/env.js';
+import { checkDatabaseHealth } from './db/client.js';
 import { logger } from './logger.js';
 
 export function createApp() {
@@ -42,6 +43,15 @@ export function createApp() {
     };
 
     response.json(body);
+  });
+
+  app.get('/health/database', async (_request, response, next) => {
+    try {
+      await checkDatabaseHealth();
+      response.json({ status: 'ok', timestamp: new Date().toISOString() });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/symbols', (_request, response) => {
