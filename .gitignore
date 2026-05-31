@@ -6,6 +6,7 @@ coverage/
 .turbo/
 .vite/
 *.tsbuildinfo
+.codex/
 
 .env
 .env.local
