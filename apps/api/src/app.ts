@@ -8,6 +8,7 @@ import {
   type HealthResponse,
 } from '@rtctp/domain';
 import { env } from './config/env.js';
+import { checkDatabaseHealth } from './db/client.js';
 import { logger } from './logger.js';
 import { createHighPrecisionTimestamp } from './time.js';
 
@@ -93,6 +94,15 @@ export function createApp() {
     };
 
     sendSuccess(response, body);
+  });
+
+  app.get('/health/database', async (_request, response, next) => {
+    try {
+      await checkDatabaseHealth();
+      response.json({ status: 'ok', timestamp: new Date().toISOString() });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/symbols', (_request, response) => {

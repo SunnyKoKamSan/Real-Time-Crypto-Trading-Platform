@@ -17,9 +17,17 @@ cp .env.example .env
 ## Start Local Infrastructure
 
 ```bash
-docker compose up -d
+npm run infra:up
 docker compose ps
 ```
+
+PostgreSQL defaults to:
+
+```text
+postgres://trader:trader@localhost:5432/crypto_trading
+```
+
+Override with `DATABASE_URL` when needed.
 
 The compose stack exposes:
 
@@ -37,6 +45,21 @@ The compose stack exposes:
 
 Grafana local credentials are `admin` / `admin`.
 
+## Migrate And Seed
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+Generate a new migration after schema edits:
+
+```bash
+npm run db:generate
+```
+
+The seed is idempotent. It creates BTC/ETH symbols, admin/dev users, demo users, and initial paper balances through `ledger_entries` with `SYSTEM_MINT`.
+
 ## Start The App
 
 Preferred one-command startup:
@@ -45,9 +68,7 @@ Preferred one-command startup:
 npm run dev
 ```
 
-The root `dev` script starts Docker Compose infrastructure, then runs the API and web dev servers in
-one process group. Stop it with `Ctrl+C`. Use separate terminals only when debugging one service at a
-time:
+The root `dev` script starts Docker Compose infrastructure, then runs the API and web dev servers in one process group. Stop it with `Ctrl+C`. Use separate terminals only when debugging one service at a time:
 
 ```bash
 npm run dev:api
@@ -84,9 +105,27 @@ npm run test
 npm run build
 ```
 
-The GitHub Actions workflow runs the same four commands after `npm ci`. `npm run test` also runs
-`npm run test:boundaries`, which creates temporary illegal imports and verifies that ESLint blocks
-the workspace boundary violations.
+The GitHub Actions workflow runs the same four commands after `npm ci`. `npm run test` also runs `npm run test:boundaries`, which creates temporary illegal imports and verifies that ESLint blocks the workspace boundary violations.
+
+## Test With PostgreSQL
+
+Normal tests run without requiring a database. To run integration tests against a disposable database URL:
+
+```bash
+TEST_DATABASE_URL=postgres://trader:trader@localhost:5432/crypto_trading npm -w @rtctp/api run test
+```
+
+The integration tests reset the `public` schema for the configured `TEST_DATABASE_URL`.
+
+## Reconstruct Balances
+
+```sql
+select user_id, asset, coalesce(sum(amount), 0)::numeric(20, 8) as balance
+from ledger_entries
+group by user_id, asset;
+```
+
+Ledger entries are historical facts. Do not update old rows to change a balance; append a compensating entry instead.
 
 ## Stop Local Infrastructure
 
