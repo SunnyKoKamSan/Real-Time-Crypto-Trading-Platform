@@ -11,10 +11,18 @@ Local laptop targets, not production guarantees:
 
 | Path                | Target                                         |
 | ------------------- | ---------------------------------------------- |
-| REST read p95       | Under 200 ms                                   |
+| REST read p95       | Under 20 ms for indexed local reads            |
 | Order placement p95 | Under 300 ms under small local load            |
-| Market tick fanout  | Under 250 ms from ingest to browser            |
+| Market tick fanout  | Under 50 ms from ingest to browser             |
 | Matching engine     | Deterministic result and documented throughput |
+
+Benchmark interpretation:
+
+- Targets assume a warm local Docker stack on a developer laptop, not a shared CI runner.
+- REST read benchmarks must name whether the path hits PostgreSQL, Redis, or an in-process cache.
+- Market fanout timing starts when the normalized tick is accepted and ends when the browser client
+  receives the WebSocket message.
+- Any target miss must include a bottleneck note and a follow-up task.
 
 ## Evidence Template
 

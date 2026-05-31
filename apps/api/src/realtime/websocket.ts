@@ -1,17 +1,22 @@
 import type { Server } from 'node:http';
 import { WebSocketServer, type RawData } from 'ws';
+import { createHighPrecisionTimestamp } from '../time.js';
 
 interface GatewayMessage {
   type: string;
   payload: Record<string, unknown>;
-  sentAt: string;
+  meta: {
+    timestamp: string;
+  };
 }
 
 function serializeMessage(type: string, payload: Record<string, unknown>): string {
   const message: GatewayMessage = {
     type,
     payload,
-    sentAt: new Date().toISOString(),
+    meta: {
+      timestamp: createHighPrecisionTimestamp(),
+    },
   };
 
   return JSON.stringify(message);

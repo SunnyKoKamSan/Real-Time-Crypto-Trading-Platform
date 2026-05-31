@@ -9,6 +9,7 @@ import {
 } from '@rtctp/domain';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
+import { createHighPrecisionTimestamp } from './time.js';
 
 const correlationHeader = 'x-correlation-id';
 
@@ -29,7 +30,7 @@ function sendSuccess<TData>(response: Response, data: TData) {
     data,
     meta: {
       correlationId,
-      timestamp: new Date().toISOString(),
+      timestamp: createHighPrecisionTimestamp(),
     },
   };
 
@@ -37,9 +38,15 @@ function sendSuccess<TData>(response: Response, data: TData) {
 }
 
 function sendError(response: Response, statusCode: number, error: ApiError['error']) {
+  const correlationId = response.locals.correlationId as string;
+
   response.status(statusCode).json({
     ok: false,
     error,
+    meta: {
+      correlationId,
+      timestamp: createHighPrecisionTimestamp(),
+    },
   } satisfies ApiError);
 }
 
@@ -82,10 +89,10 @@ export function createApp() {
       service: 'rtctp-api',
       status: 'ok',
       uptimeSeconds: Math.round(process.uptime()),
-      timestamp: new Date().toISOString(),
+      timestamp: createHighPrecisionTimestamp(),
     };
 
-    response.json(body);
+    sendSuccess(response, body);
   });
 
   app.get('/api/symbols', (_request, response) => {

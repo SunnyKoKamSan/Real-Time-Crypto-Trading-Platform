@@ -1,11 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": ".",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@rtctp/domain": ["../../packages/domain/dist/index.d.ts"]
+    }
   },
+  "references": [{ "path": "../../packages/domain" }],
   "include": ["src/**/*.ts"],
   "exclude": ["test/**/*.ts", "dist"]
 }
-

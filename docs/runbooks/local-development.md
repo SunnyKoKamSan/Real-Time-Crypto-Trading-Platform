@@ -28,15 +28,26 @@ The compose stack exposes:
 | PostgreSQL         | `localhost:5432`         |
 | Redis              | `localhost:6379`         |
 | Redpanda Kafka API | `localhost:9092`         |
+| Redpanda Admin API | `http://localhost:9644`  |
 | Prometheus         | `http://localhost:9090`  |
 | Grafana            | `http://localhost:3000`  |
 | Jaeger             | `http://localhost:16686` |
+| OTLP HTTP          | `http://localhost:4318`  |
+| OTLP gRPC          | `localhost:4317`         |
 
 Grafana local credentials are `admin` / `admin`.
 
 ## Start The App
 
-Use separate terminals:
+Preferred one-command startup:
+
+```bash
+npm run dev
+```
+
+The root `dev` script starts Docker Compose infrastructure, then runs the API and web dev servers in
+one process group. Stop it with `Ctrl+C`. Use separate terminals only when debugging one service at a
+time:
 
 ```bash
 npm run dev:api
@@ -54,9 +65,13 @@ Current local URLs:
 ```bash
 curl http://localhost:4000/health
 curl http://localhost:4000/api/symbols
+curl http://localhost:9090/-/healthy
+curl http://localhost:3000/api/health
+curl http://localhost:16686/
+curl http://localhost:9644/v1/status/ready
 ```
 
-`/health` returns a plain health body for probes. `/api/*` routes return the standard API envelope.
+All backend JSON responses return the standard API envelope.
 
 ## Quality Gates
 
@@ -69,7 +84,9 @@ npm run test
 npm run build
 ```
 
-The GitHub Actions workflow runs the same four commands after `npm ci`.
+The GitHub Actions workflow runs the same four commands after `npm ci`. `npm run test` also runs
+`npm run test:boundaries`, which creates temporary illegal imports and verifies that ESLint blocks
+the workspace boundary violations.
 
 ## Stop Local Infrastructure
 
