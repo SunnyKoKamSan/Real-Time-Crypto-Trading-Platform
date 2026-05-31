@@ -6,6 +6,7 @@ coverage/
 .turbo/
 .vite/
 *.tsbuildinfo
+.codex/
 
 .env
 .env.local
@@ -16,7 +17,10 @@ coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+__pycache__/
+*.pyc
 
 data/
 tmp/
 
+todo.md

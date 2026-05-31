@@ -10,6 +10,9 @@
     "apps/web"
   ],
   "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
     "dev:api": "npm -w @rtctp/api run dev",
     "dev:web": "npm -w @rtctp/web run dev",
     "db:generate": "drizzle-kit generate",
@@ -18,7 +21,8 @@
     "build": "npm -w @rtctp/domain run build && npm -w @rtctp/api run build && npm -w @rtctp/web run build",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "npm -w @rtctp/domain run build && npm -w @rtctp/api run typecheck && npm -w @rtctp/web run typecheck",
-    "test": "npm -w @rtctp/domain run build && npm -w @rtctp/api run test && npm -w @rtctp/web run test",
+    "test": "npm run test:boundaries && npm -w @rtctp/domain run build && npm -w @rtctp/api run test && npm -w @rtctp/web run test",
+    "test:boundaries": "node scripts/verify-boundaries.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky || true"

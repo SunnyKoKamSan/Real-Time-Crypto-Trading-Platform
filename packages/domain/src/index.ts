@@ -57,6 +57,39 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+export interface ApiMeta {
+  correlationId: string;
+  /**
+   * ISO-8601 UTC timestamp with nanosecond precision, derived from process.hrtime.bigint().
+   */
+  timestamp: string;
+}
+
+export interface ApiSuccess<TData> {
+  ok: true;
+  data: TData;
+  meta: ApiMeta;
+}
+
+export interface ApiError {
+  ok: false;
+  error: {
+    code:
+      | 'VALIDATION_ERROR'
+      | 'AUTH_REQUIRED'
+      | 'FORBIDDEN'
+      | 'NOT_FOUND'
+      | 'RATE_LIMITED'
+      | 'INTERNAL_ERROR';
+    message: string;
+    correlationId: string;
+    details?: unknown;
+  };
+  meta: ApiMeta;
+}
+
+export type ApiEnvelope<TData> = ApiSuccess<TData> | ApiError;
+
 export interface MarketTick {
   symbol: TradingSymbol;
   price: string;
