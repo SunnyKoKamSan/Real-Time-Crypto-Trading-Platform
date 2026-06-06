@@ -1,16 +1,33 @@
 import {
   Activity,
+  AlertTriangle,
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
   Clock3,
   Database,
   FileText,
+  Loader2,
+  LockKeyhole,
+  LogIn,
+  LogOut,
   RadioTower,
   ShieldCheck,
+  UserPlus,
+  Wallet,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { SUPPORTED_SYMBOLS, type OrderSide, type TradingSymbol } from '@rtctp/domain';
+import { useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
+import {
+  loginRequestSchema,
+  registerRequestSchema,
+  SUPPORTED_SYMBOLS,
+  type AssetBalance,
+  type AuthUser,
+  type OrderSide,
+  type TradingSymbol,
+} from '@rtctp/domain';
+import { ApiClientError, loginAccount, logoutAccount, registerAccount } from './lib/api';
+import { authReducer, initialAuthState } from './lib/auth-state';
 import { formatLatency } from './lib/format';
 
 const marketSnapshots: Record<
@@ -76,6 +93,243 @@ function formatCurrencyValue(value: number) {
 }
 
 export function App() {
+  const [authState, dispatchAuth] = useReducer(authReducer, initialAuthState);
+
+  async function handleAuthenticated(
+    action: 'login' | 'register',
+    input: { email: string; password: string; displayName?: string },
+  ) {
+    dispatchAuth({ type: 'submit' });
+
+    try {
+      const data =
+        action === 'login'
+          ? await loginAccount(loginRequestSchema.parse(input))
+          : await registerAccount(
+              registerRequestSchema.parse({
+                email: input.email,
+                password: input.password,
+                displayName: input.displayName ?? '',
+              }),
+            );
+
+      dispatchAuth({
+        type: 'authenticated',
+        user: data.user,
+        balances: data.balances,
+      });
+    } catch (error) {
+      dispatchAuth({
+        type: 'error',
+        message: publicAuthError(error),
+      });
+    }
+  }
+
+  async function handleLogout() {
+    await logoutAccount();
+    dispatchAuth({ type: 'logout' });
+  }
+
+  if (authState.status !== 'authenticated' || !authState.user) {
+    return (
+      <AuthScreen
+        error={authState.error}
+        isSubmitting={authState.status === 'submitting'}
+        onSubmit={handleAuthenticated}
+      />
+    );
+  }
+
+  return (
+    <DashboardShell
+      balances={authState.balances}
+      onLogout={handleLogout}
+      user={authState.user}
+    />
+  );
+}
+
+function publicAuthError(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    if (error.code === 'RATE_LIMITED') {
+      return 'Too many attempts. Wait a moment and try again.';
+    }
+
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Authentication failed. Try again.';
+}
+
+function AuthScreen(props: {
+  error: string | null;
+  isSubmitting: boolean;
+  onSubmit: (
+    action: 'login' | 'register',
+    input: { email: string; password: string; displayName?: string },
+  ) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('demo.alice@rtctp.local');
+  const [displayName, setDisplayName] = useState('Demo Trader');
+  const [password, setPassword] = useState('');
+
+  const isRegister = mode === 'register';
+
+  return (
+    <main className="min-h-screen bg-ops text-slate-100">
+      <div className="mx-auto grid min-h-screen max-w-6xl items-center gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.65fr)] lg:px-8">
+        <section className="space-y-5" aria-labelledby="auth-heading">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill tone="amber" icon={<ShieldCheck />} label="Paper trading" />
+            <StatusPill tone="green" icon={<LockKeyhole />} label="Session protected" />
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">
+              Auth baseline
+            </p>
+            <h1
+              id="auth-heading"
+              className="mt-3 max-w-3xl text-3xl font-black leading-tight text-white sm:text-5xl"
+            >
+              Real-Time Crypto Trading Platform
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
+              Access the local paper-trading console with short-lived access tokens, protected
+              refresh cookies, CSRF rotation, and ledger-derived demo balances.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricCard icon={<ShieldCheck />} label="Refresh token" value="HTTP-only" />
+            <MetricCard icon={<Wallet />} label="Demo USD" value="$100k" />
+            <MetricCard icon={<RadioTower />} label="Rate limits" value="Redis" />
+          </div>
+        </section>
+
+        <section
+          className="rounded-lg border border-slate-800 bg-panel p-4 shadow-console sm:p-5"
+          aria-labelledby="auth-form-heading"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                Account
+              </p>
+              <h2 id="auth-form-heading" className="mt-2 text-xl font-black text-white">
+                {isRegister ? 'Create access' : 'Sign in'}
+              </h2>
+            </div>
+            {isRegister ? (
+              <UserPlus className="h-5 w-5 text-amber-200" aria-hidden="true" />
+            ) : (
+              <LogIn className="h-5 w-5 text-amber-200" aria-hidden="true" />
+            )}
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 rounded-md border border-slate-800 bg-slate-950 p-1">
+            <button
+              aria-pressed={!isRegister}
+              className={`min-h-10 rounded text-sm font-black transition-colors ${
+                !isRegister ? 'bg-amber-300 text-slate-950' : 'text-slate-400 hover:bg-slate-900'
+              }`}
+              onClick={() => setMode('login')}
+              type="button"
+            >
+              Sign in
+            </button>
+            <button
+              aria-pressed={isRegister}
+              className={`min-h-10 rounded text-sm font-black transition-colors ${
+                isRegister ? 'bg-amber-300 text-slate-950' : 'text-slate-400 hover:bg-slate-900'
+              }`}
+              onClick={() => setMode('register')}
+              type="button"
+            >
+              Register
+            </button>
+          </div>
+
+          <form
+            className="mt-5 grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void props.onSubmit(mode, { email, password, displayName });
+            }}
+          >
+            {isRegister ? (
+              <label className="grid gap-2 text-sm font-semibold text-slate-300">
+                Display name
+                <input
+                  className="min-h-11 rounded-md border border-slate-800 bg-slate-950 px-3 text-base font-semibold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
+                  maxLength={120}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  value={displayName}
+                />
+              </label>
+            ) : null}
+
+            <label className="grid gap-2 text-sm font-semibold text-slate-300">
+              Email
+              <input
+                autoComplete="email"
+                className="min-h-11 rounded-md border border-slate-800 bg-slate-950 px-3 text-base font-semibold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
+                inputMode="email"
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                value={email}
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-semibold text-slate-300">
+              Password
+              <input
+                autoComplete={isRegister ? 'new-password' : 'current-password'}
+                className="min-h-11 rounded-md border border-slate-800 bg-slate-950 px-3 text-base font-semibold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                value={password}
+              />
+            </label>
+
+            {props.error ? (
+              <div className="flex gap-3 rounded-md border border-red-300/30 bg-red-300/10 p-3 text-sm font-semibold text-red-100">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{props.error}</span>
+              </div>
+            ) : null}
+
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-amber-300/40 bg-amber-300 px-4 text-sm font-black text-slate-950 transition-colors hover:bg-amber-200 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
+              disabled={props.isSubmitting}
+              type="submit"
+            >
+              {props.isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : isRegister ? (
+                <UserPlus className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <LogIn className="h-4 w-4" aria-hidden="true" />
+              )}
+              {isRegister ? 'Create account' : 'Sign in'}
+            </button>
+          </form>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function DashboardShell(props: {
+  user: AuthUser;
+  balances: AssetBalance[];
+  onLogout: () => Promise<void>;
+}) {
   const [selectedSymbol, setSelectedSymbol] = useState<TradingSymbol>(SUPPORTED_SYMBOLS[0]);
 
   return (
@@ -87,7 +341,7 @@ export function App() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusPill tone="amber" icon={<ShieldCheck />} label="Preview only" />
-                  <StatusPill tone="green" icon={<RadioTower />} label="Local stack" />
+                  <StatusPill tone="green" icon={<RadioTower />} label="Authenticated" />
                 </div>
                 <h1 className="mt-4 text-2xl font-black leading-tight text-white sm:text-4xl">
                   Real-Time Crypto Trading Platform
@@ -98,18 +352,30 @@ export function App() {
                 </p>
               </div>
 
-              <label className="grid min-w-44 gap-2 text-sm font-semibold text-slate-300">
-                Symbol
-                <select
-                  className="min-h-11 cursor-pointer rounded-md border border-slate-700 bg-slate-950 px-3 text-base font-bold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
-                  onChange={(event) => setSelectedSymbol(event.target.value as TradingSymbol)}
-                  value={selectedSymbol}
+              <div className="grid gap-3 sm:min-w-56">
+                <label className="grid gap-2 text-sm font-semibold text-slate-300">
+                  Symbol
+                  <select
+                    className="min-h-11 cursor-pointer rounded-md border border-slate-700 bg-slate-950 px-3 text-base font-bold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
+                    onChange={(event) => setSelectedSymbol(event.target.value as TradingSymbol)}
+                    value={selectedSymbol}
+                  >
+                    {SUPPORTED_SYMBOLS.map((symbol) => (
+                      <option key={symbol}>{symbol}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-black text-slate-200 transition-colors hover:border-slate-500 hover:bg-slate-900"
+                  onClick={() => {
+                    void props.onLogout();
+                  }}
+                  type="button"
                 >
-                  {SUPPORTED_SYMBOLS.map((symbol) => (
-                    <option key={symbol}>{symbol}</option>
-                  ))}
-                </select>
-              </label>
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Sign out
+                </button>
+              </div>
             </div>
           </header>
 
@@ -125,6 +391,7 @@ export function App() {
         </section>
 
         <aside className="space-y-5 lg:sticky lg:top-4 lg:self-start" aria-label="Workspace status">
+          <AccountPanel balances={props.balances} user={props.user} />
           <section className="rounded-lg border border-slate-800 bg-panel p-4 shadow-console">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -169,6 +436,37 @@ export function App() {
         </aside>
       </div>
     </main>
+  );
+}
+
+function AccountPanel(props: { user: AuthUser; balances: AssetBalance[] }) {
+  return (
+    <section className="rounded-lg border border-slate-800 bg-panel p-4 shadow-console">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">
+            Active session
+          </p>
+          <h2 className="mt-2 text-xl font-black text-white">{props.user.displayName}</h2>
+          <p className="mt-1 break-all text-xs font-semibold text-slate-400">{props.user.email}</p>
+        </div>
+        <LockKeyhole className="h-5 w-5 text-slate-400" aria-hidden="true" />
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {props.balances.map((balance) => (
+          <div
+            className="flex items-center justify-between gap-3 border-b border-slate-800 pb-3 last:border-b-0 last:pb-0"
+            key={balance.asset}
+          >
+            <span className="text-sm font-semibold text-slate-300">{balance.asset}</span>
+            <span className="font-mono text-sm font-black tabular-nums text-white">
+              {balance.balance}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
