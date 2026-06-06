@@ -8,6 +8,13 @@
       "when": 1780242987072,
       "tag": "0000_salty_omega_red",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780719488683,
+      "tag": "0001_superb_tempest",
+      "breakpoints": true
     }
   ]
 }

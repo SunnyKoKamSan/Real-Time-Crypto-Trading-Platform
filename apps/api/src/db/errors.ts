@@ -15,13 +15,20 @@ export class ApplicationError extends Error {
   }
 }
 
-function databaseCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
+function databaseCode(error: unknown, seen = new Set<unknown>()): string | undefined {
+  if (typeof error !== 'object' || error === null || seen.has(error)) {
     return undefined;
   }
 
+  seen.add(error);
+
   const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' ? code : undefined;
+  if (typeof code === 'string') {
+    return code;
+  }
+
+  const cause = (error as { cause?: unknown }).cause;
+  return databaseCode(cause, seen);
 }
 
 export function translateDatabaseError(error: unknown): ApplicationError {

@@ -23,19 +23,19 @@ PostgreSQL is the durable source of truth. Redis, streams, WebSocket payloads, a
 
 ## Tables
 
-| Table              | Purpose                                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------- |
-| `users`            | Platform accounts. Email is unique.                                                             |
-| `sessions`         | Token hashes linked to users. Session token hash is unique and sessions cascade delete with user. |
+| Table              | Purpose                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `users`            | Platform accounts. Email is unique.                                                                    |
+| `sessions`         | Token hashes linked to users. Session token hash is unique and sessions cascade delete with user.      |
 | `symbols`          | Tradable markets such as `BTC-USD` and `ETH-USD`. Symbol code is unique; base and quote assets differ. |
-| `orders`           | Durable user order intent and fill state. Side/type/status are PostgreSQL enums.                 |
-| `trades`           | Immutable executions linking buy and sell orders at a positive price and quantity.               |
-| `ledger_entries`   | Append-only signed accounting rows for balance, reserve, release, settlement, and fee events.    |
-| `market_ticks`     | Raw market prices by symbol and observed timestamp.                                              |
-| `candles`          | OHLCV bars by symbol, interval, and timestamp. `(symbol_id, interval, timestamp)` is unique.     |
-| `audit_events`     | Typed event records with JSON payload and metadata.                                              |
-| `outbox_events`    | Event metadata and payload inserted in the same transaction as state changes.                    |
-| `processed_events` | Consumer idempotency table keyed by `(consumer_group_name, event_id)`.                           |
+| `orders`           | Durable user order intent and fill state. Side/type/status are PostgreSQL enums.                       |
+| `trades`           | Immutable executions linking buy and sell orders at a positive price and quantity.                     |
+| `ledger_entries`   | Append-only signed accounting rows for balance, reserve, release, settlement, and fee events.          |
+| `market_ticks`     | Raw market prices by symbol and observed timestamp.                                                    |
+| `candles`          | OHLCV bars by symbol, interval, and timestamp. `(symbol_id, interval, timestamp)` is unique.           |
+| `audit_events`     | Typed event records with JSON payload and metadata.                                                    |
+| `outbox_events`    | Event metadata and payload inserted in the same transaction as state changes.                          |
+| `processed_events` | Consumer idempotency table keyed by `(consumer_group_name, event_id)`.                                 |
 
 ## Financial Precision
 
@@ -64,6 +64,7 @@ This decision is recorded in [ADR 0008](adr/0008-financial-precision.md). If the
 - Market orders persist `NULL` price.
 - Trade quantity and price must be positive.
 - Ledger entry `amount` is signed and cannot be zero.
+- Ledger entry signs are enforced by type: `SYSTEM_MINT` and `ORDER_RELEASE` are positive, `ORDER_RESERVE` and `FEE` are negative, and `TRADE_SETTLEMENT` may be positive or negative depending on the settled asset side.
 - Outbox status is an enum; payload version must be positive; attempts cannot be negative.
 
 ## Indexes

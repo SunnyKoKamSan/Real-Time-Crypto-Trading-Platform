@@ -17,6 +17,7 @@ const migrationsFolder = new URL('../../drizzle', import.meta.url).pathname;
 async function resetDatabase(url: string) {
   const sql = postgres(url, { max: 1, prepare: false });
   await sql`drop schema if exists public cascade`;
+  await sql`drop schema if exists drizzle cascade`;
   await sql`create schema public`;
   await sql.end();
 }
@@ -144,6 +145,33 @@ describeIntegration('database foundation', () => {
       'getLedgerBalance',
       'listLedgerEntriesForUserAsset',
     ]);
+  });
+
+  it('rejects ledger entries with ambiguous signed semantics', async () => {
+    await seedDatabase(db);
+    const [user] = await db.select().from(users).limit(1);
+
+    await expect(
+      ledgerRepository.appendLedgerEntry(db, {
+        userId: user?.id ?? '',
+        asset: 'USD',
+        type: 'FEE',
+        amount: '1.00000000',
+        referenceType: 'TEST_FEE',
+        referenceId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'CONSTRAINT_VIOLATION' });
+
+    await expect(
+      ledgerRepository.appendLedgerEntry(db, {
+        userId: user?.id ?? '',
+        asset: 'USD',
+        type: 'SYSTEM_MINT',
+        amount: '-1.00000000',
+        referenceType: 'SYSTEM_MINT',
+        referenceId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'CONSTRAINT_VIOLATION' });
   });
 
   it('inserts outbox rows inside a caller transaction', async () => {
