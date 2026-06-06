@@ -225,6 +225,16 @@ export const ledgerEntries = pgTable(
       'ledger_entries_amount_non_zero_check',
       sql`${table.amount} <> 0`,
     ),
+    ledgerSignedTypeCheck: check(
+      'ledger_entries_signed_type_check',
+      sql`(
+        (${table.type} = 'SYSTEM_MINT' and ${table.amount} > 0)
+        or (${table.type} = 'ORDER_RESERVE' and ${table.amount} < 0)
+        or (${table.type} = 'ORDER_RELEASE' and ${table.amount} > 0)
+        or (${table.type} = 'TRADE_SETTLEMENT' and ${table.amount} <> 0)
+        or (${table.type} = 'FEE' and ${table.amount} < 0)
+      )`,
+    ),
   }),
 );
 

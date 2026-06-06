@@ -127,6 +127,8 @@ group by user_id, asset;
 
 Ledger entries are historical facts. Do not update old rows to change a balance; append a compensating entry instead.
 
+Ledger signs are part of the schema contract: `SYSTEM_MINT` and `ORDER_RELEASE` must be positive, `ORDER_RESERVE` and `FEE` must be negative, and `TRADE_SETTLEMENT` is signed according to the asset-side balance effect.
+
 ## Stop Local Infrastructure
 
 ```bash

@@ -17,7 +17,7 @@ Two viable strategies were considered:
 
 Use PostgreSQL `NUMERIC(20, 8)` for financial persistence and use `decimal.js` in application/domain code. Drizzle repository boundaries expose decimal values as strings. API responses and event payloads also serialize financial values as strings, never JSON numbers.
 
-Domain boundary helpers reject JavaScript `number` for financial values. Ledger rows use signed `amount` values and typed `LedgerEntryType` values, so direction and reason are explicit.
+Domain boundary helpers reject JavaScript `number` for financial values. Ledger rows use signed `amount` values and typed `LedgerEntryType` values, so direction and reason are explicit. The database enforces that `SYSTEM_MINT` and `ORDER_RELEASE` are positive, `ORDER_RESERVE` and `FEE` are negative, and `TRADE_SETTLEMENT` remains signed by the asset-side effect.
 
 ## Consequences
 
