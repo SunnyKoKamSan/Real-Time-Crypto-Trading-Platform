@@ -21,6 +21,13 @@ export const assetEnum = pgEnum('asset', ['BTC', 'ETH', 'USD']);
 export const auditEventTypeEnum = pgEnum('audit_event_type', [
   'USER_CREATED',
   'SESSION_CREATED',
+  'AUTH_USER_REGISTERED',
+  'AUTH_LOGIN_SUCCESS',
+  'AUTH_LOGIN_FAILURE',
+  'AUTH_TOKEN_REFRESHED',
+  'AUTH_REFRESH_REPLAY_DETECTED',
+  'AUTH_LOGOUT',
+  'AUTH_SESSION_REVOKED',
   'ORDER_CREATED',
   'ORDER_CANCELLED',
   'TRADE_EXECUTED',
@@ -49,6 +56,7 @@ export const outboxEventStatusEnum = pgEnum('outbox_event_status', [
   'PUBLISHED',
   'FAILED',
 ]);
+export const userRoleEnum = pgEnum('user_role', ['USER', 'ADMIN']);
 
 export const users = pgTable(
   'users',
@@ -56,7 +64,8 @@ export const users = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     email: varchar('email', { length: 320 }).notNull(),
     displayName: varchar('display_name', { length: 120 }).notNull(),
-    role: varchar('role', { length: 32 }).notNull().default('USER'),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    role: userRoleEnum('role').notNull().default('USER'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -72,14 +81,32 @@ export const sessions = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    tokenHash: varchar('token_hash', { length: 128 }).notNull(),
+    refreshTokenHash: varchar('refresh_token_hash', { length: 128 }).notNull(),
+    csrfTokenHash: varchar('csrf_token_hash', { length: 128 }).notNull(),
+    tokenFamilyId: uuid('token_family_id').notNull(),
+    rotatedFromSessionId: uuid('rotated_from_session_id'),
+    replacedBySessionId: uuid('replaced_by_session_id'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedReason: varchar('revoked_reason', { length: 64 }),
+    ipAddress: varchar('ip_address', { length: 64 }),
+    userAgent: varchar('user_agent', { length: 512 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    sessionsTokenHashUnique: uniqueIndex('sessions_token_hash_unique').on(table.tokenHash),
-    sessionsUserExpiresIdx: index('sessions_user_expires_idx').on(table.userId, table.expiresAt),
+    sessionsRefreshTokenHashUnique: uniqueIndex('sessions_refresh_token_hash_unique').on(
+      table.refreshTokenHash,
+    ),
+    sessionsUserCreatedIdx: index('sessions_user_created_idx').on(table.userId, table.createdAt),
+    sessionsTokenFamilyIdx: index('sessions_token_family_idx').on(
+      table.tokenFamilyId,
+      table.createdAt,
+    ),
+    sessionsActiveRefreshIdx: index('sessions_active_refresh_idx')
+      .on(table.userId, table.expiresAt)
+      .where(sql`${table.revokedAt} is null`),
   }),
 );
 

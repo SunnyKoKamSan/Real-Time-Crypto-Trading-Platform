@@ -3,11 +3,15 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { sql as drizzleSql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../../src/app.js';
 import { createDatabase, type Database, withTransaction } from '../../src/db/client.js';
-import { orders, symbols, users } from '../../src/db/schema.js';
+import { auditEvents, orders, sessions, symbols, users } from '../../src/db/schema.js';
+import { setAuthRateLimitStore } from '../../src/auth/rate-limit.js';
 import * as ledgerRepository from '../../src/repositories/ledger.js';
 import { insertOutboxEvent, listPendingOutboxEvents } from '../../src/repositories/outbox.js';
 import { createUser, findUserByEmail } from '../../src/repositories/users.js';
+import { MemoryRateLimitStore } from '../../src/redis/rate-limit.js';
 import { seedDatabase } from '../../src/scripts/seed.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -41,9 +45,11 @@ describeIntegration('database foundation', () => {
     db = database.db;
     sql = database.sql;
     await migrate(db, { migrationsFolder });
+    setAuthRateLimitStore(new MemoryRateLimitStore());
   });
 
   afterEach(async () => {
+    setAuthRateLimitStore(null);
     await sql.end();
   });
 
@@ -74,6 +80,8 @@ describeIntegration('database foundation', () => {
           id: randomUUID(),
           email: 'rollback@rtctp.local',
           displayName: 'Rollback',
+          passwordHash:
+            '$argon2id$v=19$m=19456,t=2,p=1$i4BiPmIA38LBtImHSjQ2jg$ISa8j23WmOaZu3tDS0iim6NZNlk8CjWVgp9vy45ZaGg',
         });
 
         await ledgerRepository.appendLedgerEntry(tx, {
@@ -143,7 +151,9 @@ describeIntegration('database foundation', () => {
     expect(Object.keys(ledgerRepository).sort()).toEqual([
       'appendLedgerEntry',
       'getLedgerBalance',
+      'getLedgerBalances',
       'listLedgerEntriesForUserAsset',
+      'seedDemoBalances',
     ]);
   });
 
@@ -210,5 +220,176 @@ describeIntegration('database foundation', () => {
     expect(await ledgerRepository.getLedgerBalance(db, alice?.id ?? '', 'USD')).toBe(
       '100000.00000000',
     );
+  });
+
+  it('registers a user with a refresh cookie, audit event, and ledger-derived balances', async () => {
+    const response = await request(createApp())
+      .post('/api/auth/register')
+      .send({
+        email: 'New.User@rtctp.local',
+        displayName: 'New User',
+        password: 'LongEnoughPassword!2026',
+      })
+      .expect(200);
+
+    expect(response.headers['set-cookie']?.[0]).toContain('HttpOnly');
+    expect(response.body.data.user).toMatchObject({
+      email: 'new.user@rtctp.local',
+      displayName: 'New User',
+      role: 'USER',
+    });
+    expect(response.body.data.auth.accessToken).toBeTypeOf('string');
+    expect(response.body.data.auth.session.csrfToken).toBeTypeOf('string');
+    expect(response.body.data.balances).toEqual([
+      { asset: 'BTC', balance: '1.00000000' },
+      { asset: 'ETH', balance: '10.00000000' },
+      { asset: 'USD', balance: '100000.00000000' },
+    ]);
+
+    const body = JSON.stringify(response.body);
+    expect(body).not.toContain('passwordHash');
+    expect(body).not.toContain('refreshToken');
+    expect(body).not.toContain('refreshTokenHash');
+
+    const [user] = await db.select().from(users).where(drizzleSql`${users.email} = 'new.user@rtctp.local'`);
+    expect(user?.passwordHash).toMatch(/^\$argon2id\$/);
+    expect(await countRows(db, 'sessions')).toBe(1);
+
+    const [audit] = await db
+      .select()
+      .from(auditEvents)
+      .where(drizzleSql`${auditEvents.type} = 'AUTH_USER_REGISTERED'`);
+    expect(audit?.payload).toMatchObject({ userId: user?.id });
+  });
+
+  it('rejects duplicate registration with a safe error', async () => {
+    const app = createApp();
+    const payload = {
+      email: 'dupe@rtctp.local',
+      displayName: 'Dupe',
+      password: 'LongEnoughPassword!2026',
+    };
+
+    await request(app).post('/api/auth/register').send(payload).expect(200);
+    const response = await request(app).post('/api/auth/register').send(payload).expect(409);
+
+    expect(response.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Registration could not be completed with those details.',
+    });
+  });
+
+  it('logs in with generic wrong-password failure and returns /api/me with a bearer token', async () => {
+    await seedDatabase(db);
+
+    const failure = await request(createApp())
+      .post('/api/auth/login')
+      .send({ email: 'demo.alice@rtctp.local', password: 'wrong-password' })
+      .expect(401);
+
+    expect(failure.body.error).toMatchObject({
+      code: 'AUTH_REQUIRED',
+      message: 'Invalid email or password.',
+    });
+
+    const login = await request(createApp())
+      .post('/api/auth/login')
+      .send({ email: 'demo.alice@rtctp.local', password: 'LocalDemoPassword!2026' })
+      .expect(200);
+
+    await request(createApp()).get('/api/me').expect(401);
+
+    const me = await request(createApp())
+      .get('/api/me')
+      .set('Authorization', `Bearer ${login.body.data.auth.accessToken}`)
+      .expect(200);
+
+    expect(me.body.data.user.email).toBe('demo.alice@rtctp.local');
+    expect(me.body.data.balances).toContainEqual({
+      asset: 'USD',
+      balance: '100000.00000000',
+    });
+  });
+
+  it('rotates refresh cookies, detects old-token replay, and revokes the token family', async () => {
+    const agent = request.agent(createApp());
+    const register = await agent
+      .post('/api/auth/register')
+      .send({
+        email: 'rotate@rtctp.local',
+        displayName: 'Rotate User',
+        password: 'LongEnoughPassword!2026',
+      })
+      .expect(200);
+    const firstCookie = register.headers['set-cookie']?.[0]?.split(';')[0] ?? '';
+    const firstCsrf = register.body.data.auth.session.csrfToken;
+
+    const refresh = await agent
+      .post('/api/auth/refresh')
+      .set('x-csrf-token', firstCsrf)
+      .expect(200);
+    const secondCsrf = refresh.body.data.auth.session.csrfToken;
+
+    expect(secondCsrf).not.toBe(firstCsrf);
+    expect(await countRows(db, 'sessions')).toBe(2);
+
+    await request(createApp())
+      .post('/api/auth/refresh')
+      .set('Cookie', firstCookie)
+      .set('x-csrf-token', firstCsrf)
+      .expect(401);
+
+    const replayEvents = await db
+      .select()
+      .from(auditEvents)
+      .where(drizzleSql`${auditEvents.type} = 'AUTH_REFRESH_REPLAY_DETECTED'`);
+    expect(replayEvents).toHaveLength(1);
+
+    const sessionRows = await db.select().from(sessions);
+    expect(sessionRows.every((session) => session.revokedAt !== null)).toBe(true);
+  });
+
+  it('logs out idempotently and clears the refresh cookie', async () => {
+    const agent = request.agent(createApp());
+    const register = await agent
+      .post('/api/auth/register')
+      .send({
+        email: 'logout@rtctp.local',
+        displayName: 'Logout User',
+        password: 'LongEnoughPassword!2026',
+      })
+      .expect(200);
+
+    const logout = await agent
+      .post('/api/auth/logout')
+      .set('x-csrf-token', register.body.data.auth.session.csrfToken)
+      .expect(200);
+
+    expect(logout.headers['set-cookie']?.[0]).toContain('rtctp_refresh=;');
+    expect(logout.body.data).toEqual({ loggedOut: true });
+    expect((await db.select().from(sessions))[0]?.revokedReason).toBe('LOGOUT');
+
+    await agent.post('/api/auth/logout').expect(200);
+  });
+
+  it('rate limits auth endpoints with standard headers', async () => {
+    const app = createApp();
+
+    for (let index = 0; index < 8; index += 1) {
+      await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'missing@rtctp.local', password: 'wrong-password' })
+        .expect(401);
+    }
+
+    const blocked = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'missing@rtctp.local', password: 'wrong-password' })
+      .expect(429);
+
+    expect(blocked.body.error.code).toBe('RATE_LIMITED');
+    expect(blocked.headers['x-ratelimit-limit']).toBe('8');
+    expect(blocked.headers['x-ratelimit-remaining']).toBe('0');
+    expect(blocked.headers['x-ratelimit-reset']).toBeTypeOf('string');
   });
 });

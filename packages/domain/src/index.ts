@@ -24,6 +24,13 @@ export const ASSETS = ['BTC', 'ETH', 'USD'] as const;
 export const AUDIT_EVENT_TYPES = [
   'USER_CREATED',
   'SESSION_CREATED',
+  'AUTH_USER_REGISTERED',
+  'AUTH_LOGIN_SUCCESS',
+  'AUTH_LOGIN_FAILURE',
+  'AUTH_TOKEN_REFRESHED',
+  'AUTH_REFRESH_REPLAY_DETECTED',
+  'AUTH_LOGOUT',
+  'AUTH_SESSION_REVOKED',
   'ORDER_CREATED',
   'ORDER_CANCELLED',
   'TRADE_EXECUTED',
@@ -31,6 +38,7 @@ export const AUDIT_EVENT_TYPES = [
   'SYSTEM_EVENT',
 ] as const;
 export const OUTBOX_EVENT_STATUSES = ['PENDING', 'PUBLISHED', 'FAILED'] as const;
+export const USER_ROLES = ['USER', 'ADMIN'] as const;
 
 export const orderSideSchema = z.enum(ORDER_SIDES);
 export const orderTypeSchema = z.enum(ORDER_TYPES);
@@ -40,6 +48,7 @@ export const assetSchema = z.enum(ASSETS);
 export const auditEventTypeSchema = z.enum(AUDIT_EVENT_TYPES);
 export const outboxEventStatusSchema = z.enum(OUTBOX_EVENT_STATUSES);
 export const tradingSymbolSchema = z.enum(SUPPORTED_SYMBOLS);
+export const userRoleSchema = z.enum(USER_ROLES);
 
 export type OrderSide = z.infer<typeof orderSideSchema>;
 export type OrderType = z.infer<typeof orderTypeSchema>;
@@ -49,6 +58,7 @@ export type Asset = z.infer<typeof assetSchema>;
 export type AuditEventType = z.infer<typeof auditEventTypeSchema>;
 export type OutboxEventStatus = z.infer<typeof outboxEventStatusSchema>;
 export type TradingSymbol = z.infer<typeof tradingSymbolSchema>;
+export type UserRole = z.infer<typeof userRoleSchema>;
 
 export interface HealthResponse {
   service: 'rtctp-api';
@@ -89,6 +99,87 @@ export interface ApiError {
 }
 
 export type ApiEnvelope<TData> = ApiSuccess<TData> | ApiError;
+
+export const passwordPolicySchema = z
+  .string()
+  .min(12, 'Password must be at least 12 characters.')
+  .max(128, 'Password must be at most 128 characters.')
+  .refine((value) => /[A-Za-z]/.test(value), 'Password must include at least one letter.')
+  .refine((value) => /[^A-Za-z]/.test(value), 'Password must include at least one non-letter.');
+
+export function validatePasswordPolicy(password: string): boolean {
+  return passwordPolicySchema.safeParse(password).success;
+}
+
+export const authUserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  displayName: z.string().min(1).max(120),
+  role: userRoleSchema,
+  createdAt: z.string().datetime(),
+});
+
+export const assetBalanceSchema = z.object({
+  asset: assetSchema,
+  balance: z.string(),
+});
+
+export const authSessionSchema = z.object({
+  expiresAt: z.string().datetime(),
+  csrfToken: z.string().min(16),
+});
+
+export const authTokenPairSchema = z.object({
+  accessToken: z.string().min(1),
+  accessTokenExpiresAt: z.string().datetime(),
+  session: authSessionSchema,
+});
+
+export const registerRequestSchema = z.object({
+  email: z.string().trim().email().max(320),
+  displayName: z.string().trim().min(1).max(120),
+  password: passwordPolicySchema,
+});
+
+export const loginRequestSchema = z.object({
+  email: z.string().trim().email().max(320),
+  password: z.string().min(1).max(128),
+});
+
+export const refreshRequestSchema = z.object({});
+export const logoutRequestSchema = z.object({});
+
+export const registerResponseSchema = z.object({
+  user: authUserSchema,
+  balances: z.array(assetBalanceSchema),
+  auth: authTokenPairSchema,
+});
+
+export const loginResponseSchema = registerResponseSchema;
+
+export const refreshResponseSchema = z.object({
+  auth: authTokenPairSchema,
+});
+
+export const logoutResponseSchema = z.object({
+  loggedOut: z.literal(true),
+});
+
+export const meResponseSchema = z.object({
+  user: authUserSchema,
+  balances: z.array(assetBalanceSchema),
+});
+
+export type AuthUser = z.infer<typeof authUserSchema>;
+export type AssetBalance = z.infer<typeof assetBalanceSchema>;
+export type AuthTokenPair = z.infer<typeof authTokenPairSchema>;
+export type RegisterRequest = z.infer<typeof registerRequestSchema>;
+export type RegisterResponse = z.infer<typeof registerResponseSchema>;
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
+export type LoginResponse = z.infer<typeof loginResponseSchema>;
+export type RefreshResponse = z.infer<typeof refreshResponseSchema>;
+export type LogoutResponse = z.infer<typeof logoutResponseSchema>;
+export type MeResponse = z.infer<typeof meResponseSchema>;
 
 export interface MarketTick {
   symbol: TradingSymbol;
@@ -162,7 +253,7 @@ export function parseFinancialDecimal(value: unknown, fieldName?: string): Decim
 export function validateOrderQuantity(quantity: unknown): string {
   const decimal = parseFinancialDecimal(quantity, 'order quantity');
 
-  if (!decimal.isPositive()) {
+  if (!decimal.greaterThan(0)) {
     throw new RangeError('order quantity must be positive');
   }
 

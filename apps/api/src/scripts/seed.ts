@@ -1,7 +1,9 @@
 import { pathToFileURL } from 'node:url';
+import { env } from '../config/env.js';
 import { db, queryClient, withTransaction } from '../db/client.js';
 import type { Database } from '../db/client.js';
 import { ledgerEntries, users } from '../db/schema.js';
+import { hashPassword } from '../auth/password.js';
 import { upsertSymbol } from '../repositories/symbols.js';
 
 const ids = {
@@ -16,7 +18,7 @@ const ids = {
 
 const seedUsers = [
   { id: ids.admin, email: 'admin@rtctp.local', displayName: 'Admin', role: 'ADMIN' },
-  { id: ids.dev, email: 'dev@rtctp.local', displayName: 'Developer', role: 'DEV' },
+  { id: ids.dev, email: 'dev@rtctp.local', displayName: 'Developer', role: 'ADMIN' },
   { id: ids.alice, email: 'demo.alice@rtctp.local', displayName: 'Demo Alice', role: 'USER' },
   { id: ids.bob, email: 'demo.bob@rtctp.local', displayName: 'Demo Bob', role: 'USER' },
 ] as const;
@@ -73,6 +75,8 @@ const seedLedgerEntries = [
 ] as const;
 
 export async function seedDatabase(client: Database = db): Promise<void> {
+  const passwordHash = await hashPassword(env.SEED_DEMO_PASSWORD);
+
   await withTransaction(async (tx) => {
     await upsertSymbol(tx, {
       id: ids.btcUsd,
@@ -97,11 +101,12 @@ export async function seedDatabase(client: Database = db): Promise<void> {
     for (const user of seedUsers) {
       await tx
         .insert(users)
-        .values(user)
+        .values({ ...user, passwordHash })
         .onConflictDoUpdate({
           target: users.email,
           set: {
             displayName: user.displayName,
+            passwordHash,
             role: user.role,
             updatedAt: new Date(),
           },

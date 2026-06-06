@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import {
-  SUPPORTED_SYMBOLS,
-  type ApiError,
-  type ApiSuccess,
-  type HealthResponse,
-} from '@rtctp/domain';
+import cookieParser from 'cookie-parser';
+import { SUPPORTED_SYMBOLS, type HealthResponse } from '@rtctp/domain';
+import { createAuthRouter } from './auth/routes.js';
 import { env } from './config/env.js';
 import { checkDatabaseHealth } from './db/client.js';
+import { sendError, sendSuccess } from './http/responses.js';
 import { logger } from './logger.js';
 import { createHighPrecisionTimestamp } from './time.js';
 
@@ -24,33 +22,6 @@ function readCorrelationId(request: Request): string {
   return randomUUID();
 }
 
-function sendSuccess<TData>(response: Response, data: TData) {
-  const correlationId = response.locals.correlationId as string;
-  const body: ApiSuccess<TData> = {
-    ok: true,
-    data,
-    meta: {
-      correlationId,
-      timestamp: createHighPrecisionTimestamp(),
-    },
-  };
-
-  response.json(body);
-}
-
-function sendError(response: Response, statusCode: number, error: ApiError['error']) {
-  const correlationId = response.locals.correlationId as string;
-
-  response.status(statusCode).json({
-    ok: false,
-    error,
-    meta: {
-      correlationId,
-      timestamp: createHighPrecisionTimestamp(),
-    },
-  } satisfies ApiError);
-}
-
 export function createApp() {
   const app = express();
 
@@ -61,6 +32,7 @@ export function createApp() {
       credentials: true,
     }),
   );
+  app.use(cookieParser());
   app.use(express.json({ limit: '1mb' }));
   app.use((request, response, next) => {
     const correlationId = readCorrelationId(request);
@@ -123,6 +95,8 @@ export function createApp() {
       services: ['postgresql', 'redis', 'redpanda', 'prometheus', 'grafana', 'jaeger'],
     });
   });
+
+  app.use('/api', createAuthRouter());
 
   app.use((request, response) => {
     const correlationId = response.locals.correlationId as string;

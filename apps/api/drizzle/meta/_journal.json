@@ -15,6 +15,13 @@
       "when": 1780719488683,
       "tag": "0001_superb_tempest",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780721114355,
+      "tag": "0002_rapid_whistler",
+      "breakpoints": true
     }
   ]
 }

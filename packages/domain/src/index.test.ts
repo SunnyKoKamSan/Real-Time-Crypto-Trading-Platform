@@ -4,8 +4,10 @@ import {
   isTerminalOrderStatus,
   orderSideSchema,
   parseFinancialDecimal,
+  passwordPolicySchema,
   requiresLimitPrice,
   validateDecimalString,
+  validatePasswordPolicy,
   validateOrderQuantity,
 } from './index.js';
 
@@ -26,6 +28,15 @@ describe('financial decimal helpers', () => {
     expect(validateOrderQuantity('0.00000001')).toBe('0.00000001');
     expect(() => validateOrderQuantity('0')).toThrow('positive');
     expect(() => validateOrderQuantity('-1.00000000')).toThrow('positive');
+  });
+});
+
+describe('auth contracts', () => {
+  it('enforces password policy boundaries', () => {
+    expect(validatePasswordPolicy('LongEnoughPassword!2026')).toBe(true);
+    expect(passwordPolicySchema.safeParse('short!1').success).toBe(false);
+    expect(passwordPolicySchema.safeParse('onlyletterslongenough').success).toBe(false);
+    expect(passwordPolicySchema.safeParse('123456789012!').success).toBe(false);
   });
 });
 

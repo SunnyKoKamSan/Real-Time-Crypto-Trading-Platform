@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import type { Asset } from '@rtctp/domain';
+import { ASSETS, type Asset, type AssetBalance } from '@rtctp/domain';
 import type { RepositoryClient } from '../db/client.js';
 import { runRepositoryQuery } from '../db/errors.js';
 import { type NewLedgerEntry, ledgerEntries } from '../db/schema.js';
@@ -39,4 +39,35 @@ export async function getLedgerBalance(
   );
 
   return rows[0]?.balance ?? '0.00000000';
+}
+
+export async function getLedgerBalances(
+  client: RepositoryClient,
+  userId: string,
+): Promise<AssetBalance[]> {
+  return Promise.all(
+    ASSETS.map(async (asset) => ({
+      asset,
+      balance: await getLedgerBalance(client, userId, asset),
+    })),
+  );
+}
+
+export async function seedDemoBalances(client: RepositoryClient, userId: string, referenceId: string) {
+  const entries = [
+    { asset: 'USD', amount: '100000.00000000' },
+    { asset: 'BTC', amount: '1.00000000' },
+    { asset: 'ETH', amount: '10.00000000' },
+  ] as const;
+
+  for (const entry of entries) {
+    await appendLedgerEntry(client, {
+      userId,
+      asset: entry.asset,
+      type: 'SYSTEM_MINT',
+      amount: entry.amount,
+      referenceType: 'DEMO_BALANCE_SEED',
+      referenceId,
+    });
+  }
 }

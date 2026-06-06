@@ -8,7 +8,11 @@ export type Database = PostgresJsDatabase<typeof schema>;
 export type TransactionClient = Parameters<Parameters<Database['transaction']>[0]>[0];
 export type RepositoryClient = Database | TransactionClient;
 
-export function createDatabase(databaseUrl = env.DATABASE_URL): {
+function defaultDatabaseUrl(): string {
+  return env.NODE_ENV === 'test' && env.TEST_DATABASE_URL ? env.TEST_DATABASE_URL : env.DATABASE_URL;
+}
+
+export function createDatabase(databaseUrl = defaultDatabaseUrl()): {
   db: Database;
   sql: postgres.Sql;
 } {
