@@ -1,16 +1,12 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { ZodError } from 'zod';
-import {
-  loginRequestSchema,
-  registerRequestSchema,
-  type LoginRequest,
-  type RegisterRequest,
-} from '@rtctp/domain';
+import type { LoginRequest, RegisterRequest } from '@rtctp/domain';
 import { env } from '../config/env.js';
 import { sendError, sendSuccess } from '../http/responses.js';
 import { createAuthRateLimitMiddleware } from './rate-limit.js';
 import { getAccessTokenClaims, requireAccessToken } from './middleware.js';
+import { loginRequestSchema, registerRequestSchema } from './schemas.js';
 import {
   AuthPublicError,
   getMe,

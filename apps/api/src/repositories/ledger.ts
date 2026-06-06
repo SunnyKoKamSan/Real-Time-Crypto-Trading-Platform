@@ -1,9 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { ASSETS, type Asset, type AssetBalance } from '@rtctp/domain';
+import type { Asset, AssetBalance } from '@rtctp/domain';
 import type { RepositoryClient } from '../db/client.js';
 import { runRepositoryQuery } from '../db/errors.js';
 import { type NewLedgerEntry, ledgerEntries } from '../db/schema.js';
 import { firstOrThrow } from './helpers.js';
+
+const ledgerAssets = ['BTC', 'ETH', 'USD'] as const satisfies readonly Asset[];
 
 export async function appendLedgerEntry(client: RepositoryClient, entry: NewLedgerEntry) {
   const rows = await runRepositoryQuery(client.insert(ledgerEntries).values(entry).returning());
@@ -46,7 +48,7 @@ export async function getLedgerBalances(
   userId: string,
 ): Promise<AssetBalance[]> {
   return Promise.all(
-    ASSETS.map(async (asset) => ({
+    ledgerAssets.map(async (asset) => ({
       asset,
       balance: await getLedgerBalance(client, userId, asset),
     })),

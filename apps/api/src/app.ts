@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
-import { SUPPORTED_SYMBOLS, type HealthResponse } from '@rtctp/domain';
+import type { HealthResponse } from '@rtctp/domain';
 import { createAuthRouter } from './auth/routes.js';
 import { env } from './config/env.js';
 import { checkDatabaseHealth } from './db/client.js';
@@ -11,6 +11,7 @@ import { logger } from './logger.js';
 import { createHighPrecisionTimestamp } from './time.js';
 
 const correlationHeader = 'x-correlation-id';
+const supportedSymbols = ['BTC-USD', 'ETH-USD'] as const;
 
 function readCorrelationId(request: Request): string {
   const headerValue = request.header(correlationHeader);
@@ -79,7 +80,7 @@ export function createApp() {
 
   app.get('/api/symbols', (_request, response) => {
     sendSuccess(response, {
-      symbols: SUPPORTED_SYMBOLS.map((symbol) => ({
+      symbols: supportedSymbols.map((symbol) => ({
         symbol,
         baseAsset: symbol.split('-')[0],
         quoteAsset: symbol.split('-')[1],
