@@ -2,20 +2,20 @@
 
 ## Current Routes
 
-| Method | Path               | Status               | Notes                                             |
-| ------ | ------------------ | -------------------- | ------------------------------------------------- |
-| `GET`  | `/health`          | Implemented          | Standard envelope health response for probes.     |
-| `GET`  | `/api/symbols`     | Implemented          | Returns supported trading symbols.                |
-| `GET`  | `/api/system/info` | Implemented          | Returns local prototype service metadata.         |
-| `WS`   | `/ws`              | Implemented skeleton | Sends `system.connected` and echoes message size. |
+| Method | Path                 | Status               | Notes                                                           |
+| ------ | -------------------- | -------------------- | --------------------------------------------------------------- |
+| `GET`  | `/health`            | Implemented          | Standard envelope health response for probes.                   |
+| `POST` | `/api/auth/register` | Implemented          | Creates user, session, demo balances, and auth cookies.         |
+| `POST` | `/api/auth/login`    | Implemented          | Creates a new refresh-token family.                             |
+| `POST` | `/api/auth/refresh`  | Implemented          | Requires refresh cookie plus CSRF header and rotates session.   |
+| `POST` | `/api/auth/logout`   | Implemented          | Revokes refresh session idempotently and clears cookie.         |
+| `GET`  | `/api/me`            | Implemented          | Requires bearer access token and returns safe profile/balances. |
+| `GET`  | `/api/symbols`       | Implemented          | Returns supported trading symbols.                              |
+| `GET`  | `/api/system/info`   | Implemented          | Returns local prototype service metadata.                       |
+| `WS`   | `/ws`                | Implemented skeleton | Sends `system.connected` and echoes message size.               |
 
 ## Planned REST Scope
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
-- `GET /api/me`
 - `GET /api/symbols`
 - `GET /api/market/:symbol/ticks`
 - `GET /api/market/:symbol/candles`
@@ -80,6 +80,122 @@ X-RateLimit-Reset: 1717191000
 
 `X-RateLimit-Reset` is a Unix timestamp in seconds. When a request is rejected by rate limiting, the
 API returns `429` with the normal error envelope and may include `Retry-After`.
+
+## Authentication
+
+The auth model uses short-lived bearer access tokens and HTTP-only refresh-token cookies.
+
+- Access tokens are returned in JSON and held in frontend memory.
+- Refresh tokens are sent only as the `rtctp_refresh` HTTP-only cookie scoped to `/api/auth`.
+- The API returns a CSRF token in auth responses as `data.auth.session.csrfToken`.
+- Clients must send the CSRF token in `x-csrf-token` on `POST /api/auth/refresh` and
+  `POST /api/auth/logout`.
+- Refresh rotates the refresh token and CSRF token. Reusing an old known refresh token is treated as
+  replay, audited, and revokes the token family.
+
+### Register
+
+```http
+POST /api/auth/register
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "demo@example.local",
+  "displayName": "Demo Trader",
+  "password": "LongEnoughPassword!2026"
+}
+```
+
+Success sets the refresh cookie and returns:
+
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "demo@example.local",
+    "displayName": "Demo Trader",
+    "role": "USER",
+    "createdAt": "2026-06-06T00:00:00.000Z"
+  },
+  "balances": [
+    { "asset": "BTC", "balance": "1.00000000" },
+    { "asset": "ETH", "balance": "10.00000000" },
+    { "asset": "USD", "balance": "100000.00000000" }
+  ],
+  "auth": {
+    "accessToken": "jwt",
+    "accessTokenExpiresAt": "2026-06-06T00:15:00.000Z",
+    "session": {
+      "expiresAt": "2026-06-13T00:00:00.000Z",
+      "csrfToken": "opaque-token"
+    }
+  }
+}
+```
+
+Duplicate registration returns a safe `409 VALIDATION_ERROR` without password or token details.
+
+### Login
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "demo.alice@rtctp.local",
+  "password": "LocalDemoPassword!2026"
+}
+```
+
+Unknown email and wrong password both return:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Invalid email or password.",
+    "correlationId": "request-or-generated-id"
+  },
+  "meta": {
+    "correlationId": "request-or-generated-id",
+    "timestamp": "2026-06-06T00:00:00.000000000Z"
+  }
+}
+```
+
+### Refresh
+
+```http
+POST /api/auth/refresh
+Cookie: rtctp_refresh=...
+x-csrf-token: ...
+```
+
+Returns a new access token, CSRF token, and rotated refresh cookie. The request body is empty.
+
+### Logout
+
+```http
+POST /api/auth/logout
+Cookie: rtctp_refresh=...
+x-csrf-token: ...
+```
+
+Returns `{ "loggedOut": true }` and clears the refresh cookie. The endpoint is idempotent.
+
+### Current User
+
+```http
+GET /api/me
+Authorization: Bearer <access-token>
+```
+
+Returns the safe user profile and ledger-derived balances.
 
 ## Pagination
 

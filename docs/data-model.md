@@ -25,8 +25,8 @@ PostgreSQL is the durable source of truth. Redis, streams, WebSocket payloads, a
 
 | Table              | Purpose                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------ |
-| `users`            | Platform accounts. Email is unique.                                                                    |
-| `sessions`         | Token hashes linked to users. Session token hash is unique and sessions cascade delete with user.      |
+| `users`            | Platform accounts. Email is unique; password hashes are Argon2id; roles are `USER`/`ADMIN`.            |
+| `sessions`         | Refresh-token rotation state linked to users. Stores token/CSRF hashes, not raw tokens.                |
 | `symbols`          | Tradable markets such as `BTC-USD` and `ETH-USD`. Symbol code is unique; base and quote assets differ. |
 | `orders`           | Durable user order intent and fill state. Side/type/status are PostgreSQL enums.                       |
 | `trades`           | Immutable executions linking buy and sell orders at a positive price and quantity.                     |
@@ -55,6 +55,13 @@ This decision is recorded in [ADR 0008](adr/0008-financial-precision.md). If the
 ## Constraints
 
 - `users.email` is unique.
+- `users.password_hash` is required and never returned by API responses.
+- `users.role` is constrained to `USER` or `ADMIN`.
+- `sessions.refresh_token_hash` is unique.
+- `sessions.csrf_token_hash` is required.
+- `sessions.token_family_id` groups rotated refresh sessions.
+- A rotated session has `revoked_reason = ROTATED` and `replaced_by_session_id` set.
+- Refresh replay revokes active sessions in the affected token family and audits the anomaly.
 - `symbols.code` is unique.
 - Orders enforce valid side/type/status through enums.
 - Order quantity must be positive.
@@ -83,6 +90,10 @@ High-volume query paths:
 - `market_ticks_symbol_timestamp_idx`
 - `candles_symbol_interval_timestamp_idx`
 - `processed_events_consumer_group_event_idx`
+- `sessions_refresh_token_hash_unique`
+- `sessions_user_created_idx`
+- `sessions_token_family_idx`
+- `sessions_active_refresh_idx`
 
 ## Invariants To Preserve
 
@@ -93,6 +104,8 @@ High-volume query paths:
 - No cancellation without release of unused reserves.
 - No mutation of historical ledger entries.
 - Redis and in-memory books can be rebuilt from PostgreSQL.
+- Demo balances are derived only from `ledger_entries`; registration seeds them with `SYSTEM_MINT`
+  rows and `reference_type = DEMO_BALANCE_SEED`.
 
 ## Ledger Reconstruction Example
 

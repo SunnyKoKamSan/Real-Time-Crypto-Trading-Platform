@@ -60,6 +60,19 @@ npm run db:generate
 
 The seed is idempotent. It creates BTC/ETH symbols, admin/dev users, demo users, and initial paper balances through `ledger_entries` with `SYSTEM_MINT`.
 
+Seeded local accounts use `SEED_DEMO_PASSWORD`, defaulting to:
+
+```text
+LocalDemoPassword!2026
+```
+
+Seeded users:
+
+- `admin@rtctp.local` / `ADMIN`
+- `dev@rtctp.local` / `ADMIN`
+- `demo.alice@rtctp.local` / `USER`
+- `demo.bob@rtctp.local` / `USER`
+
 ## Start The App
 
 Preferred one-command startup:
@@ -80,6 +93,26 @@ Current local URLs:
 - API: `http://localhost:4000`
 - Web: `http://127.0.0.1:5173`
 - WebSocket: `ws://localhost:4000/ws`
+
+## Auth Configuration
+
+Local auth defaults are suitable for development only:
+
+```bash
+JWT_SECRET=local-development-jwt-secret-change-before-production
+JWT_ISSUER=rtctp-api
+JWT_AUDIENCE=rtctp-web
+ACCESS_TOKEN_TTL=15m
+REFRESH_TOKEN_TTL=7d
+AUTH_COOKIE_NAME=rtctp_refresh
+AUTH_COOKIE_SECURE=false
+CSRF_HEADER_NAME=x-csrf-token
+REDIS_URL=redis://localhost:6379
+```
+
+Use `AUTH_COOKIE_SECURE=true` outside local HTTP development. Refresh tokens are HTTP-only cookies;
+frontend code only stores the access token and CSRF token in memory. A browser reload loses the
+in-memory CSRF token, so the local app signs in again rather than persisting sensitive auth state.
 
 ## Smoke Checks
 
