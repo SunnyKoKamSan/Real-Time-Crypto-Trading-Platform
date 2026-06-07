@@ -55,3 +55,49 @@ installs.
 
 Generated folders such as `dist`, `coverage`, `.vite`, and `node_modules` should stay ignored. If
 tracked artifacts appear, remove them from the index rather than committing generated output.
+
+## Market Data Does Not Start
+
+Check mode and provider settings:
+
+```bash
+MARKET_DATA_MODE=fixture npm run dev:api
+MARKET_DATA_MODE=live MARKET_DATA_PROVIDER=coinbase npm run dev:api
+curl http://localhost:4000/api/market/health
+```
+
+Expected local setup before fixture or live ingestion:
+
+```bash
+npm run infra:up
+npm run db:migrate
+npm run db:seed
+```
+
+Useful checks:
+
+```bash
+curl http://localhost:4000/api/symbols
+curl 'http://localhost:4000/api/market/BTC-USD/ticks?limit=10'
+curl 'http://localhost:4000/api/market/BTC-USD/candles?interval=1m&limit=10'
+```
+
+If `/api/market/health` shows `cache.errors` increasing, Redis is unavailable or refusing writes.
+This is non-fatal for REST reads because PostgreSQL remains the source for ticks and candles.
+
+If `state` is `reconnecting` in live mode, the API is running but the Coinbase WebSocket is not
+currently connected. Check network access and provider reachability. Fixture mode does not require
+internet access.
+
+If queue `dropped` increases, inbound messages exceeded `MARKET_DATA_QUEUE_CAPACITY`. The queue uses
+`drop_oldest` to cap memory. Increase capacity only after checking local memory and ingestion lag.
+
+## PostgreSQL Integration Tests Are Skipped
+
+The integration suite intentionally skips DB-resetting tests unless `TEST_DATABASE_URL` is set:
+
+```bash
+TEST_DATABASE_URL=postgres://trader:trader@localhost:5432/crypto_trading npm -w @rtctp/api run test
+```
+
+The tests drop and recreate the target schema, so use a disposable local database.

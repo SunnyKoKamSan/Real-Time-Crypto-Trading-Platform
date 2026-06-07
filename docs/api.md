@@ -2,23 +2,23 @@
 
 ## Current Routes
 
-| Method | Path                 | Status               | Notes                                                           |
-| ------ | -------------------- | -------------------- | --------------------------------------------------------------- |
-| `GET`  | `/health`            | Implemented          | Standard envelope health response for probes.                   |
-| `POST` | `/api/auth/register` | Implemented          | Creates user, session, demo balances, and auth cookies.         |
-| `POST` | `/api/auth/login`    | Implemented          | Creates a new refresh-token family.                             |
-| `POST` | `/api/auth/refresh`  | Implemented          | Requires refresh cookie plus CSRF header and rotates session.   |
-| `POST` | `/api/auth/logout`   | Implemented          | Revokes refresh session idempotently and clears cookie.         |
-| `GET`  | `/api/me`            | Implemented          | Requires bearer access token and returns safe profile/balances. |
-| `GET`  | `/api/symbols`       | Implemented          | Returns supported trading symbols.                              |
-| `GET`  | `/api/system/info`   | Implemented          | Returns local prototype service metadata.                       |
-| `WS`   | `/ws`                | Implemented skeleton | Sends `system.connected` and echoes message size.               |
+| Method | Path                          | Status               | Notes                                                             |
+| ------ | ----------------------------- | -------------------- | ----------------------------------------------------------------- |
+| `GET`  | `/health`                     | Implemented          | Standard envelope health response for probes.                     |
+| `POST` | `/api/auth/register`          | Implemented          | Creates user, session, demo balances, and auth cookies.           |
+| `POST` | `/api/auth/login`             | Implemented          | Creates a new refresh-token family.                               |
+| `POST` | `/api/auth/refresh`           | Implemented          | Requires refresh cookie plus CSRF header and rotates session.     |
+| `POST` | `/api/auth/logout`            | Implemented          | Revokes refresh session idempotently and clears cookie.           |
+| `GET`  | `/api/me`                     | Implemented          | Requires bearer access token and returns safe profile/balances.   |
+| `GET`  | `/api/symbols`                | Implemented          | Returns active DB symbols, with static fallback before seeding.   |
+| `GET`  | `/api/market/health`          | Implemented          | Returns market provider, queue, parser, candle, and cache health. |
+| `GET`  | `/api/market/:symbol/ticks`   | Implemented          | Newest-first tick page for `BTC-USD` or `ETH-USD`.                |
+| `GET`  | `/api/market/:symbol/candles` | Implemented          | Newest-first one-minute candle page.                              |
+| `GET`  | `/api/system/info`            | Implemented          | Returns local prototype service metadata.                         |
+| `WS`   | `/ws`                         | Implemented skeleton | Sends `system.connected` and echoes message size.                 |
 
 ## Planned REST Scope
 
-- `GET /api/symbols`
-- `GET /api/market/:symbol/ticks`
-- `GET /api/market/:symbol/candles`
 - `GET /api/orderbook/:symbol`
 - `POST /api/orders`
 - `GET /api/orders`
@@ -214,14 +214,16 @@ Response metadata:
 ```json
 {
   "ok": true,
-  "data": [],
-  "meta": {
-    "correlationId": "request-or-generated-id",
-    "timestamp": "2026-05-25T00:00:00.000000000Z",
+  "data": {
+    "ticks": [],
     "page": {
       "limit": 100,
       "nextCursor": "opaque-cursor-or-null"
     }
+  },
+  "meta": {
+    "correlationId": "request-or-generated-id",
+    "timestamp": "2026-05-25T00:00:00.000000000Z"
   }
 }
 ```
@@ -234,6 +236,67 @@ Pagination rules:
 - Initial cursor-paginated endpoints: `GET /api/market/:symbol/ticks`,
   `GET /api/market/:symbol/candles`, `GET /api/orders`, `GET /api/trades`, and
   `GET /api/admin/audit-events`.
+
+## Market Data
+
+### Symbols
+
+```http
+GET /api/symbols
+```
+
+Returns active symbols from PostgreSQL when available. Before migrations or seed data are present,
+the API returns the supported static symbols with `degraded: true`.
+
+```json
+{
+  "symbols": [
+    {
+      "symbol": "BTC-USD",
+      "baseAsset": "BTC",
+      "quoteAsset": "USD",
+      "priceScale": 8,
+      "quantityScale": 8,
+      "isActive": true
+    }
+  ]
+}
+```
+
+### Provider Health
+
+```http
+GET /api/market/health
+```
+
+Returns the configured mode (`disabled`, `fixture`, or `live`), provider state, timestamps,
+reconnect count, parser counters, queue counters, candle counters, and Redis latest-price cache
+errors. Redis errors are non-fatal because PostgreSQL ticks and candles remain the source for REST
+reads.
+
+### Ticks
+
+```http
+GET /api/market/BTC-USD/ticks?limit=50&cursor=opaque&since=2026-06-07T00:00:00.000Z
+```
+
+- `symbol` must be `BTC-USD` or `ETH-USD`.
+- `limit` defaults to `50` and is capped at `500`.
+- `cursor` is an opaque URL-safe cursor.
+- `since` is optional and accepts an ISO timestamp for manual debugging.
+- Results are newest first by `(providerTimestamp, id)`.
+
+Each tick contains `price` and `size` as decimal strings, `source`, provider/received timestamps,
+and optional `providerSequence` and `tradeId`.
+
+### Candles
+
+```http
+GET /api/market/BTC-USD/candles?interval=1m&limit=50&cursor=opaque
+```
+
+Only `interval=1m` is implemented. Candle `intervalStart` maps to the persisted
+`candles.timestamp`; `intervalEnd` is computed in the API response.
 
 ## Order Request Schema
 

@@ -66,6 +66,35 @@ Partitioning rules:
 - Financial values in event payloads are decimal strings, never JSON numbers.
 - Event timestamps use UTC ISO-8601 strings with nine fractional digits.
 
+## Market Events
+
+Milestone 4 defines the normalized tick event at the domain boundary. It is not yet published to
+Redpanda by the API process; the contract is ready for the Milestone 9 outbox/streaming work.
+
+```json
+{
+  "type": "MarketTickReceived",
+  "version": 1,
+  "symbol": "BTC-USD",
+  "price": "65000.12000000",
+  "size": "0.01000000",
+  "providerTimestamp": "2026-06-07T00:00:01.000Z",
+  "receivedTimestamp": "2026-06-07T00:00:01.100Z",
+  "provider": "coinbase",
+  "providerSequence": "10",
+  "tradeId": "12345"
+}
+```
+
+Partition key: `symbol`.
+
+Notes:
+
+- `providerTimestamp` is the exchange trade time.
+- `receivedTimestamp` is set by the API process when the raw provider message is parsed.
+- `tradeId` is used for dedupe when the provider supplies one.
+- `price` and `size` are decimal strings validated by the shared domain schema.
+
 ## Idempotency Mechanics
 
 Every durable consumer must record processed event IDs in PostgreSQL inside the same transaction as

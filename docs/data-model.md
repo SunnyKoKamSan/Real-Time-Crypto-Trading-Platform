@@ -23,19 +23,19 @@ PostgreSQL is the durable source of truth. Redis, streams, WebSocket payloads, a
 
 ## Tables
 
-| Table              | Purpose                                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------------------ |
-| `users`            | Platform accounts. Email is unique; password hashes are Argon2id; roles are `USER`/`ADMIN`.            |
-| `sessions`         | Refresh-token rotation state linked to users. Stores token/CSRF hashes, not raw tokens.                |
-| `symbols`          | Tradable markets such as `BTC-USD` and `ETH-USD`. Symbol code is unique; base and quote assets differ. |
-| `orders`           | Durable user order intent and fill state. Side/type/status are PostgreSQL enums.                       |
-| `trades`           | Immutable executions linking buy and sell orders at a positive price and quantity.                     |
-| `ledger_entries`   | Append-only signed accounting rows for balance, reserve, release, settlement, and fee events.          |
-| `market_ticks`     | Raw market prices by symbol and observed timestamp.                                                    |
-| `candles`          | OHLCV bars by symbol, interval, and timestamp. `(symbol_id, interval, timestamp)` is unique.           |
-| `audit_events`     | Typed event records with JSON payload and metadata.                                                    |
-| `outbox_events`    | Event metadata and payload inserted in the same transaction as state changes.                          |
-| `processed_events` | Consumer idempotency table keyed by `(consumer_group_name, event_id)`.                                 |
+| Table              | Purpose                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `users`            | Platform accounts. Email is unique; password hashes are Argon2id; roles are `USER`/`ADMIN`.                 |
+| `sessions`         | Refresh-token rotation state linked to users. Stores token/CSRF hashes, not raw tokens.                     |
+| `symbols`          | Tradable markets such as `BTC-USD` and `ETH-USD`. Symbol code is unique; base and quote assets differ.      |
+| `orders`           | Durable user order intent and fill state. Side/type/status are PostgreSQL enums.                            |
+| `trades`           | Immutable executions linking buy and sell orders at a positive price and quantity.                          |
+| `ledger_entries`   | Append-only signed accounting rows for balance, reserve, release, settlement, and fee events.               |
+| `market_ticks`     | Raw market trades by symbol, provider timestamp, source, optional sequence, and optional trade ID.          |
+| `candles`          | OHLCV bars by symbol, interval, and interval-start timestamp. `(symbol_id, interval, timestamp)` is unique. |
+| `audit_events`     | Typed event records with JSON payload and metadata.                                                         |
+| `outbox_events`    | Event metadata and payload inserted in the same transaction as state changes.                               |
+| `processed_events` | Consumer idempotency table keyed by `(consumer_group_name, event_id)`.                                      |
 
 ## Financial Precision
 
@@ -49,6 +49,8 @@ Initial financial column policy:
 | Order quantity, filled quantity, remaining amount | `NUMERIC(20, 8)` | Must be non-negative; accepted order quantity must be `> 0`. |
 | Balances, reserves, releases, settlement amounts  | `NUMERIC(20, 8)` | Updated only through append-only ledger entries.             |
 | Fees                                              | `NUMERIC(20, 8)` | Zero-fee prototype still stores explicit fee values.         |
+| Market tick price and size                        | `NUMERIC(20, 8)` | Provider precision is preserved through validated strings.   |
+| Candle OHLCV                                      | `NUMERIC(20, 8)` | Aggregated with `decimal.js`, never JavaScript `number`.     |
 
 This decision is recorded in [ADR 0008](adr/0008-financial-precision.md). If the project later switches to scaled `BIGINT` storage, that must be captured in a replacement ADR and applied consistently across database schema, domain math, API strings, events, and tests.
 
@@ -73,6 +75,11 @@ This decision is recorded in [ADR 0008](adr/0008-financial-precision.md). If the
 - Ledger entry `amount` is signed and cannot be zero.
 - Ledger entry signs are enforced by type: `SYSTEM_MINT` and `ORDER_RELEASE` are positive, `ORDER_RESERVE` and `FEE` are negative, and `TRADE_SETTLEMENT` may be positive or negative depending on the settled asset side.
 - Outbox status is an enum; payload version must be positive; attempts cannot be negative.
+- Market tick price must be positive.
+- Market tick size must be non-negative. Existing pre-Milestone-4 rows use `0.00000000` when no
+  provider size was available.
+- Market tick `(symbol_id, source, trade_id)` is unique when `trade_id` is not null.
+- Candle prices must be positive and candle volume must be non-negative.
 
 ## Indexes
 
@@ -88,7 +95,10 @@ High-volume query paths:
 - `ledger_entries_user_asset_created_idx`
 - `outbox_events_status_created_idx`
 - `market_ticks_symbol_timestamp_idx`
+- `market_ticks_symbol_observed_desc_idx`
+- `market_ticks_symbol_source_trade_unique`
 - `candles_symbol_interval_timestamp_idx`
+- `candles_symbol_interval_timestamp_desc_idx`
 - `processed_events_consumer_group_event_idx`
 - `sessions_refresh_token_hash_unique`
 - `sessions_user_created_idx`
@@ -106,6 +116,18 @@ High-volume query paths:
 - Redis and in-memory books can be rebuilt from PostgreSQL.
 - Demo balances are derived only from `ledger_entries`; registration seeds them with `SYSTEM_MINT`
   rows and `reference_type = DEMO_BALANCE_SEED`.
+
+## Market Data Retention And Derived State
+
+Milestone 4 keeps recent ticks and one-minute candles in PostgreSQL and writes Redis latest-price
+keys as derived state:
+
+- Latest price key: `market:latest:<symbol>`.
+- Default tick retention cap: `10000` rows per symbol.
+- Default one-minute candle retention cap: `1440` rows per symbol.
+- Retention is enforced by the ingestion worker after successful inserts/upserts.
+- REST reads use PostgreSQL, not Redis, so Redis outages are visible in health but do not make tick
+  and candle endpoints unavailable.
 
 ## Ledger Reconstruction Example
 
