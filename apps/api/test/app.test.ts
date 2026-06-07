@@ -52,6 +52,28 @@ describe('api app', () => {
     expect(response.body.meta.correlationId).toBe('test-correlation-id');
   });
 
+  it('formats validation issues as readable user messages', async () => {
+    const response = await request(createApp())
+      .post('/api/auth/register')
+      .send({
+        email: 'demo@example.local',
+        displayName: 'Demo Trader',
+        password: '123',
+      })
+      .expect(400);
+
+    expect(response.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Password must be at least 12 characters and include at least one letter.',
+      details: [
+        {
+          path: 'password',
+          message: 'Password must be at least 12 characters and include at least one letter.',
+        },
+      ],
+    });
+  });
+
   it('returns metadata on error envelopes', async () => {
     const response = await request(createApp()).get('/api/missing').expect(404);
 

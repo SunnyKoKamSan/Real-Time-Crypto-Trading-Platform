@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
-import { ZodError } from 'zod';
+import { ZodError, type ZodIssue } from 'zod';
 import type { LoginRequest, RegisterRequest } from '@rtctp/domain';
 import { env } from '../config/env.js';
 import { sendError, sendSuccess } from '../http/responses.js';
@@ -58,18 +58,87 @@ function clearRefreshCookie(response: Response) {
   });
 }
 
+function toFieldLabel(path: ZodIssue['path']): string {
+  const raw = path.join('.') || 'request';
+  const spaced = raw
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[._-]+/g, ' ')
+    .trim();
+
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function stripTrailingPeriod(value: string): string {
+  return value.endsWith('.') ? value.slice(0, -1) : value;
+}
+
+function joinReadableClauses(clauses: string[]): string {
+  if (clauses.length <= 1) {
+    return clauses[0] ?? '';
+  }
+
+  if (clauses.length === 2) {
+    return `${clauses[0]} and ${clauses[1]}`;
+  }
+
+  return `${clauses.slice(0, -1).join(', ')}, and ${clauses[clauses.length - 1]}`;
+}
+
+function formatFieldIssues(path: ZodIssue['path'], messages: string[]): string {
+  const label = toFieldLabel(path);
+  const mustPrefix = `${label} must `;
+  const clauses = messages.map(stripTrailingPeriod);
+
+  if (clauses.every((message) => message.startsWith(mustPrefix))) {
+    return `${mustPrefix}${joinReadableClauses(
+      clauses.map((message) => message.slice(mustPrefix.length)),
+    )}.`;
+  }
+
+  if (clauses.length === 1) {
+    const message = clauses[0] ?? '';
+    return message.startsWith(label) ? `${message}.` : `${label}: ${message}.`;
+  }
+
+  return `${label}: ${joinReadableClauses(clauses)}.`;
+}
+
+function formatValidationError(error: ZodError) {
+  const grouped = new Map<string, { path: ZodIssue['path']; messages: string[] }>();
+
+  for (const issue of error.issues) {
+    const key = issue.path.join('.') || 'request';
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.messages.push(issue.message);
+    } else {
+      grouped.set(key, { path: issue.path, messages: [issue.message] });
+    }
+  }
+
+  const details = Array.from(grouped.values()).map((group) => ({
+    path: group.path.join('.'),
+    message: formatFieldIssues(group.path, group.messages),
+  }));
+
+  return {
+    message: details.map((detail) => detail.message).join(' '),
+    details,
+  };
+}
+
 function handleAuthError(error: unknown, response: Response) {
   const correlationId = response.locals.correlationId as string;
 
   if (error instanceof ZodError) {
+    const validation = formatValidationError(error);
+
     sendError(response, 400, {
       code: 'VALIDATION_ERROR',
-      message: 'One or more fields are invalid.',
+      message: validation.message,
       correlationId,
-      details: error.issues.map((issue) => ({
-        path: issue.path.join('.'),
-        message: issue.message,
-      })),
+      details: validation.details,
     });
     return true;
   }
@@ -86,11 +155,7 @@ function handleAuthError(error: unknown, response: Response) {
   return false;
 }
 
-async function authRoute(
-  request: Request,
-  response: Response,
-  handler: () => Promise<void>,
-) {
+async function authRoute(request: Request, response: Response, handler: () => Promise<void>) {
   try {
     await handler();
   } catch (error) {
@@ -141,17 +206,21 @@ export function createAuthRouter() {
     },
   );
 
-  router.post('/auth/logout', createAuthRateLimitMiddleware('logout'), (request, response, next) => {
-    authRoute(request, response, async () => {
-      const result = await logoutSession(
-        readRefreshCookie(request),
-        readCsrfHeader(request),
-        authContext(request, response),
-      );
-      clearRefreshCookie(response);
-      sendSuccess(response, result);
-    }).catch(next);
-  });
+  router.post(
+    '/auth/logout',
+    createAuthRateLimitMiddleware('logout'),
+    (request, response, next) => {
+      authRoute(request, response, async () => {
+        const result = await logoutSession(
+          readRefreshCookie(request),
+          readCsrfHeader(request),
+          authContext(request, response),
+        );
+        clearRefreshCookie(response);
+        sendSuccess(response, result);
+      }).catch(next);
+    },
+  );
 
   router.get('/me', requireAccessToken, (request, response, next) => {
     authRoute(request, response, async () => {

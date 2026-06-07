@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Eye,
+  EyeOff,
   FileText,
   Loader2,
   LockKeyhole,
@@ -142,11 +144,7 @@ export function App() {
   }
 
   return (
-    <DashboardShell
-      balances={authState.balances}
-      onLogout={handleLogout}
-      user={authState.user}
-    />
+    <DashboardShell balances={authState.balances} onLogout={handleLogout} user={authState.user} />
   );
 }
 
@@ -178,6 +176,7 @@ function AuthScreen(props: {
   const [email, setEmail] = useState('demo.alice@rtctp.local');
   const [displayName, setDisplayName] = useState('Demo Trader');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const isRegister = mode === 'register';
 
@@ -288,13 +287,28 @@ function AuthScreen(props: {
 
             <label className="grid gap-2 text-sm font-semibold text-slate-300">
               Password
-              <input
-                autoComplete={isRegister ? 'new-password' : 'current-password'}
-                className="min-h-11 rounded-md border border-slate-800 bg-slate-950 px-3 text-base font-semibold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                value={password}
-              />
+              <span className="relative block">
+                <input
+                  autoComplete={isRegister ? 'new-password' : 'current-password'}
+                  className="min-h-11 w-full rounded-md border border-slate-800 bg-slate-950 px-3 pr-12 text-base font-semibold text-white outline-none transition-colors focus:border-amber-300 focus:ring-2 focus:ring-amber-300/30"
+                  onChange={(event) => setPassword(event.target.value)}
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                />
+                <button
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  className="absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-900 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  type="button"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </button>
+              </span>
             </label>
 
             {props.error ? (
