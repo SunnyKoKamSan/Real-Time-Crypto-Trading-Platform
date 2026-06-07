@@ -94,6 +94,11 @@ function formatCurrencyValue(value: number) {
   return Number.isFinite(value) ? currencyFormatter.format(value) : '$0.00';
 }
 
+interface LocalValidationIssue {
+  path: Array<string | number>;
+  message: string;
+}
+
 export function App() {
   const [authState, dispatchAuth] = useReducer(authReducer, initialAuthState);
 
@@ -148,7 +153,12 @@ export function App() {
   );
 }
 
-function publicAuthError(error: unknown): string {
+export function publicAuthError(error: unknown): string {
+  const validationMessage = formatValidationError(error);
+  if (validationMessage) {
+    return validationMessage;
+  }
+
   if (error instanceof ApiClientError) {
     if (error.code === 'RATE_LIMITED') {
       return 'Too many attempts. Wait a moment and try again.';
@@ -162,6 +172,118 @@ function publicAuthError(error: unknown): string {
   }
 
   return 'Authentication failed. Try again.';
+}
+
+function formatValidationError(error: unknown): string | null {
+  const issues = readValidationIssues(error);
+
+  if (!issues || issues.length === 0) {
+    return null;
+  }
+
+  const grouped = new Map<string, { path: LocalValidationIssue['path']; messages: string[] }>();
+
+  for (const issue of issues) {
+    const key = issue.path.join('.') || 'request';
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.messages.push(issue.message);
+    } else {
+      grouped.set(key, { path: issue.path, messages: [issue.message] });
+    }
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => formatFieldIssues(group.path, group.messages))
+    .join(' ');
+}
+
+function readValidationIssues(error: unknown): LocalValidationIssue[] | null {
+  if (hasValidationIssues(error)) {
+    return error.issues;
+  }
+
+  if (error instanceof Error) {
+    try {
+      const parsed = JSON.parse(error.message) as unknown;
+      return isValidationIssueArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function hasValidationIssues(value: unknown): value is { issues: LocalValidationIssue[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'issues' in value &&
+    isValidationIssueArray((value as { issues: unknown }).issues)
+  );
+}
+
+function isValidationIssueArray(value: unknown): value is LocalValidationIssue[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (issue) =>
+        typeof issue === 'object' &&
+        issue !== null &&
+        Array.isArray((issue as { path?: unknown }).path) &&
+        (issue as { path: unknown[] }).path.every(
+          (part) => typeof part === 'string' || typeof part === 'number',
+        ) &&
+        typeof (issue as { message?: unknown }).message === 'string',
+    )
+  );
+}
+
+function toFieldLabel(path: LocalValidationIssue['path']): string {
+  const raw = path.join('.') || 'request';
+  const spaced = raw
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[._-]+/g, ' ')
+    .trim();
+
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function stripTrailingPeriod(value: string): string {
+  return value.endsWith('.') ? value.slice(0, -1) : value;
+}
+
+function joinReadableClauses(clauses: string[]): string {
+  if (clauses.length <= 1) {
+    return clauses[0] ?? '';
+  }
+
+  if (clauses.length === 2) {
+    return `${clauses[0]} and ${clauses[1]}`;
+  }
+
+  return `${clauses.slice(0, -1).join(', ')}, and ${clauses[clauses.length - 1]}`;
+}
+
+function formatFieldIssues(path: LocalValidationIssue['path'], messages: string[]): string {
+  const label = toFieldLabel(path);
+  const mustPrefix = `${label} must `;
+  const clauses = messages.map(stripTrailingPeriod);
+
+  if (clauses.every((message) => message.startsWith(mustPrefix))) {
+    return `${mustPrefix}${joinReadableClauses(
+      clauses.map((message) => message.slice(mustPrefix.length)),
+    )}.`;
+  }
+
+  if (clauses.length === 1) {
+    const message = clauses[0] ?? '';
+    return message.startsWith(label) ? `${message}.` : `${label}: ${message}.`;
+  }
+
+  return `${label}: ${joinReadableClauses(clauses)}.`;
 }
 
 function AuthScreen(props: {
