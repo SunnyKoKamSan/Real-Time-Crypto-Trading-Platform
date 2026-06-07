@@ -2,16 +2,28 @@ import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
-import type { HealthResponse } from '@rtctp/domain';
+import {
+  SUPPORTED_SYMBOLS,
+  type HealthResponse,
+  type MarketProviderHealthDto,
+} from '@rtctp/domain';
 import { createAuthRouter } from './auth/routes.js';
 import { env } from './config/env.js';
 import { checkDatabaseHealth } from './db/client.js';
+import { db as defaultDb, type Database } from './db/client.js';
 import { sendError, sendSuccess } from './http/responses.js';
 import { logger } from './logger.js';
+import { createMarketDataRouter } from './market-data/routes.js';
+import { marketDataService } from './market-data/service.js';
+import { listSymbols } from './repositories/symbols.js';
 import { createHighPrecisionTimestamp } from './time.js';
 
 const correlationHeader = 'x-correlation-id';
-const supportedSymbols = ['BTC-USD', 'ETH-USD'] as const;
+
+export interface CreateAppOptions {
+  database?: Database;
+  getMarketHealth?: () => MarketProviderHealthDto;
+}
 
 function readCorrelationId(request: Request): string {
   const headerValue = request.header(correlationHeader);
@@ -23,8 +35,10 @@ function readCorrelationId(request: Request): string {
   return randomUUID();
 }
 
-export function createApp() {
+export function createApp(options: CreateAppOptions = {}) {
   const app = express();
+  const database = options.database ?? defaultDb;
+  const getMarketHealth = options.getMarketHealth ?? (() => marketDataService.getHealthSnapshot());
 
   app.disable('x-powered-by');
   app.use(
@@ -78,14 +92,30 @@ export function createApp() {
     }
   });
 
-  app.get('/api/symbols', (_request, response) => {
-    sendSuccess(response, {
-      symbols: supportedSymbols.map((symbol) => ({
-        symbol,
-        baseAsset: symbol.split('-')[0],
-        quoteAsset: symbol.split('-')[1],
-      })),
-    });
+  app.get('/api/symbols', async (_request, response) => {
+    try {
+      const rows = await listSymbols(database);
+      const activeRows = rows.filter((row) => row.isActive === 1);
+
+      if (activeRows.length === 0) {
+        sendSuccess(response, fallbackSymbols(true));
+        return;
+      }
+
+      sendSuccess(response, {
+        symbols: activeRows.map((row) => ({
+          symbol: row.code,
+          baseAsset: row.baseAsset,
+          quoteAsset: row.quoteAsset,
+          priceScale: row.priceScale,
+          quantityScale: row.quantityScale,
+          isActive: row.isActive === 1,
+        })),
+      });
+    } catch (error) {
+      logger.warn({ err: error }, 'falling back to static symbols');
+      sendSuccess(response, fallbackSymbols(true));
+    }
   });
 
   app.get('/api/system/info', (_request, response) => {
@@ -97,6 +127,7 @@ export function createApp() {
     });
   });
 
+  app.use('/api', createMarketDataRouter({ database, getHealth: getMarketHealth }));
   app.use('/api', createAuthRouter());
 
   app.use((request, response) => {
@@ -130,4 +161,18 @@ export function createApp() {
   });
 
   return app;
+}
+
+function fallbackSymbols(degraded: boolean) {
+  return {
+    degraded,
+    symbols: SUPPORTED_SYMBOLS.map((symbol) => ({
+      symbol,
+      baseAsset: symbol.split('-')[0],
+      quoteAsset: symbol.split('-')[1],
+      priceScale: 8,
+      quantityScale: 8,
+      isActive: true,
+    })),
+  };
 }

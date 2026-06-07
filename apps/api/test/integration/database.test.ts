@@ -8,6 +8,7 @@ import { createApp } from '../../src/app.js';
 import { createDatabase, type Database, withTransaction } from '../../src/db/client.js';
 import { auditEvents, orders, sessions, symbols, users } from '../../src/db/schema.js';
 import { setAuthRateLimitStore } from '../../src/auth/rate-limit.js';
+import { MarketDataService } from '../../src/market-data/service.js';
 import * as ledgerRepository from '../../src/repositories/ledger.js';
 import { insertOutboxEvent, listPendingOutboxEvents } from '../../src/repositories/outbox.js';
 import { createUser, findUserByEmail } from '../../src/repositories/users.js';
@@ -157,6 +158,124 @@ describeIntegration('database foundation', () => {
     ]);
   });
 
+  it('replays market ticks into DB-backed tick and candle endpoints', async () => {
+    await seedDatabase(db);
+    const service = new MarketDataService({
+      database: db,
+      config: {
+        mode: 'disabled',
+        provider: 'coinbase',
+        symbols: ['BTC-USD', 'ETH-USD'],
+        fixturePath: 'unused',
+        replaySpeed: 1,
+        queueCapacity: 10,
+        tickRetentionPerSymbol: 100,
+        candleRetentionPerSymbol: 100,
+        reconnectBaseMs: 250,
+        reconnectMaxMs: 30_000,
+        reconnectJitterRatio: 0,
+        healthStaleMs: 15_000,
+      },
+    });
+    await service.start();
+
+    service.processRawMessageForTest(
+      JSON.stringify({
+        channel: 'market_trades',
+        sequence_num: 1,
+        events: [
+          {
+            trades: [
+              {
+                trade_id: 'integration-1',
+                product_id: 'BTC-USD',
+                price: '65000.00000000',
+                size: '0.10000000',
+                side: 'BUY',
+                time: '2026-06-07T00:00:01.000Z',
+              },
+              {
+                trade_id: 'integration-2',
+                product_id: 'BTC-USD',
+                price: '65010.00000000',
+                size: '0.20000000',
+                side: 'SELL',
+                time: '2026-06-07T00:00:20.000Z',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    await service.drainForTest();
+
+    const app = createApp({
+      database: db,
+      getMarketHealth: () => service.getHealthSnapshot(),
+    });
+
+    const ticks = await request(app).get('/api/market/BTC-USD/ticks?limit=10').expect(200);
+    expect(ticks.body.data.ticks.map((tick: { tradeId: string }) => tick.tradeId)).toEqual([
+      'integration-2',
+      'integration-1',
+    ]);
+    expect(ticks.body.data.page).toEqual({ limit: 10, nextCursor: null });
+
+    const candleResponse = await request(app)
+      .get('/api/market/BTC-USD/candles?interval=1m&limit=10')
+      .expect(200);
+    expect(candleResponse.body.data.candles[0]).toMatchObject({
+      symbol: 'BTC-USD',
+      interval: '1m',
+      intervalStart: '2026-06-07T00:00:00.000Z',
+      intervalEnd: '2026-06-07T00:01:00.000Z',
+      open: '65000.00000000',
+      high: '65010.00000000',
+      low: '65000.00000000',
+      close: '65010.00000000',
+      volume: '0.30000000',
+    });
+
+    const health = await request(app).get('/api/market/health').expect(200);
+    expect(health.body.data.parser.parsed).toBe(2);
+    expect(health.body.data.candles.updated).toBe(2);
+    expect(health.body.data.cache.errors).toBeGreaterThanOrEqual(0);
+
+    expect(await countRows(db, 'market_ticks')).toBe(2);
+    expect(await countRows(db, 'candles')).toBe(1);
+    await service.stop();
+  });
+
+  it('validates market endpoint symbols and limits before querying', async () => {
+    const app = createApp({
+      database: db,
+      getMarketHealth: () =>
+        ({
+          mode: 'disabled',
+          provider: 'coinbase',
+          state: 'disabled',
+          symbols: ['BTC-USD', 'ETH-USD'],
+          startedAt: null,
+          connectedAt: null,
+          lastMessageAt: null,
+          lastHeartbeatAt: null,
+          lastErrorAt: null,
+          lastError: null,
+          reconnectCount: 0,
+          queue: { capacity: 1, length: 0, enqueued: 0, dequeued: 0, dropped: 0 },
+          parser: { parsed: 0, ignored: 0, errors: 0, duplicates: 0 },
+          candles: { updated: 0, lateAccepted: 0, tooLateRejected: 0 },
+          cache: { latestPriceWrites: 0, errors: 0 },
+        }) as const,
+    });
+
+    const badSymbol = await request(app).get('/api/market/DOGE-USD/ticks').expect(400);
+    expect(badSymbol.body.error.code).toBe('VALIDATION_ERROR');
+
+    const badLimit = await request(app).get('/api/market/BTC-USD/ticks?limit=1000').expect(400);
+    expect(badLimit.body.error.message).toContain('limit');
+  });
+
   it('rejects ledger entries with ambiguous signed semantics', async () => {
     await seedDatabase(db);
     const [user] = await db.select().from(users).limit(1);
@@ -251,7 +370,10 @@ describeIntegration('database foundation', () => {
     expect(body).not.toContain('refreshToken');
     expect(body).not.toContain('refreshTokenHash');
 
-    const [user] = await db.select().from(users).where(drizzleSql`${users.email} = 'new.user@rtctp.local'`);
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(drizzleSql`${users.email} = 'new.user@rtctp.local'`);
     expect(user?.passwordHash).toMatch(/^\$argon2id\$/);
     expect(await countRows(db, 'sessions')).toBe(1);
 

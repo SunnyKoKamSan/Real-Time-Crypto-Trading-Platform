@@ -13,9 +13,7 @@ describe('api app', () => {
         status: 'ok',
       },
     });
-    expect(response.body.meta.timestamp).toMatch(
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$/,
-    );
+    expect(response.body.meta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$/);
   });
 
   it('lists supported trading symbols', async () => {
@@ -24,12 +22,24 @@ describe('api app', () => {
     expect(response.headers['x-correlation-id']).toBeTypeOf('string');
     expect(response.body.ok).toBe(true);
     expect(response.body.meta.correlationId).toBe(response.headers['x-correlation-id']);
-    expect(response.body.meta.timestamp).toMatch(
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$/,
-    );
+    expect(response.body.meta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$/);
     expect(response.body.data.symbols).toEqual([
-      { symbol: 'BTC-USD', baseAsset: 'BTC', quoteAsset: 'USD' },
-      { symbol: 'ETH-USD', baseAsset: 'ETH', quoteAsset: 'USD' },
+      {
+        symbol: 'BTC-USD',
+        baseAsset: 'BTC',
+        quoteAsset: 'USD',
+        priceScale: 8,
+        quantityScale: 8,
+        isActive: true,
+      },
+      {
+        symbol: 'ETH-USD',
+        baseAsset: 'ETH',
+        quoteAsset: 'USD',
+        priceScale: 8,
+        quantityScale: 8,
+        isActive: true,
+      },
     ]);
   });
 
@@ -47,8 +57,6 @@ describe('api app', () => {
 
     expect(response.body.ok).toBe(false);
     expect(response.body.error.correlationId).toBe(response.body.meta.correlationId);
-    expect(response.body.meta.timestamp).toMatch(
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$/,
-    );
+    expect(response.body.meta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$/);
   });
 });
