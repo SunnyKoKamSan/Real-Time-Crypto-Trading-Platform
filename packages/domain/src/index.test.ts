@@ -3,6 +3,7 @@ import {
   canCancelOrder,
   isTerminalOrderStatus,
   orderSideSchema,
+  marketTickReceivedSchema,
   parseFinancialDecimal,
   passwordPolicySchema,
   requiresLimitPrice,
@@ -28,6 +29,21 @@ describe('financial decimal helpers', () => {
     expect(validateOrderQuantity('0.00000001')).toBe('0.00000001');
     expect(() => validateOrderQuantity('0')).toThrow('positive');
     expect(() => validateOrderQuantity('-1.00000000')).toThrow('positive');
+  });
+
+  it('rejects JavaScript numbers in market tick financial fields', () => {
+    const result = marketTickReceivedSchema.safeParse({
+      type: 'MarketTickReceived',
+      version: 1,
+      symbol: 'BTC-USD',
+      price: 65000,
+      size: '0.01000000',
+      providerTimestamp: '2026-06-07T00:00:01.000Z',
+      receivedTimestamp: '2026-06-07T00:00:01.100Z',
+      provider: 'coinbase',
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

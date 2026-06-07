@@ -273,9 +273,12 @@ export const marketTicks = pgTable(
       .notNull()
       .references(() => symbols.id, { onDelete: 'restrict' }),
     price: financial('price').notNull(),
+    size: financial('size').notNull(),
     bid: financial('bid'),
     ask: financial('ask'),
     source: varchar('source', { length: 32 }).notNull(),
+    providerSequence: varchar('provider_sequence', { length: 128 }),
+    tradeId: varchar('trade_id', { length: 128 }),
     observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -284,9 +287,21 @@ export const marketTicks = pgTable(
       table.symbolId,
       table.observedAt,
     ),
+    marketTicksSymbolObservedDescIdx: index('market_ticks_symbol_observed_desc_idx').on(
+      table.symbolId,
+      desc(table.observedAt),
+      desc(table.id),
+    ),
+    marketTicksTradeDedupeIdx: uniqueIndex('market_ticks_symbol_source_trade_unique')
+      .on(table.symbolId, table.source, table.tradeId)
+      .where(sql`${table.tradeId} is not null`),
     marketTicksPricePositiveCheck: check(
       'market_ticks_price_positive_check',
       sql`${table.price} > 0`,
+    ),
+    marketTicksSizeNonNegativeCheck: check(
+      'market_ticks_size_non_negative_check',
+      sql`${table.size} >= 0`,
     ),
     marketTicksBidPositiveCheck: check(
       'market_ticks_bid_positive_check',
@@ -324,6 +339,12 @@ export const candles = pgTable(
       table.symbolId,
       table.interval,
       table.timestamp,
+    ),
+    candlesSymbolIntervalTimestampDescIdx: index('candles_symbol_interval_timestamp_desc_idx').on(
+      table.symbolId,
+      table.interval,
+      desc(table.timestamp),
+      desc(table.id),
     ),
     candlesPricesPositiveCheck: check(
       'candles_prices_positive_check',
