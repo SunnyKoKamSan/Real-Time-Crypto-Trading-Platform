@@ -1,17 +1,12 @@
 import { Buffer } from 'node:buffer';
 import { Router, type Request, type Response } from 'express';
-import {
-  marketCandleIntervalSchema,
-  tradingSymbolSchema,
-  type MarketCandleDto,
-  type MarketProviderHealthDto,
-  type MarketTickDto,
-} from '@rtctp/domain';
+import type { MarketCandleDto, MarketProviderHealthDto, MarketTickDto } from '@rtctp/domain';
 import type { Database } from '../db/client.js';
 import { db as defaultDb } from '../db/client.js';
 import { sendError, sendSuccess } from '../http/responses.js';
 import { listCandlesPage, listMarketTicksPage } from '../repositories/market-data.js';
 import { findSymbolByCode } from '../repositories/symbols.js';
+import { isSupportedCandleInterval, isSupportedMarketSymbol } from './contracts.js';
 
 export interface MarketRouterOptions {
   database?: Database;
@@ -28,8 +23,8 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
 
   router.get('/market/:symbol/ticks', async (request, response, next) => {
     try {
-      const symbol = tradingSymbolSchema.safeParse(request.params.symbol);
-      if (!symbol.success) {
+      const symbol = request.params.symbol;
+      if (!isSupportedMarketSymbol(symbol)) {
         sendValidationError(response, request, 'Unsupported market symbol.');
         return;
       }
@@ -40,7 +35,7 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
         return;
       }
 
-      const symbolRow = await findSymbolByCode(database, symbol.data);
+      const symbolRow = await findSymbolByCode(database, symbol);
       if (!symbolRow) {
         sendValidationError(response, request, 'Market symbol is not available.');
         return;
@@ -72,7 +67,7 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
         ticks: page.map(
           (row): MarketTickDto => ({
             id: row.id,
-            symbol: symbol.data,
+            symbol,
             price: row.price,
             size: row.size,
             source: row.source as MarketTickDto['source'],
@@ -94,14 +89,14 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
 
   router.get('/market/:symbol/candles', async (request, response, next) => {
     try {
-      const symbol = tradingSymbolSchema.safeParse(request.params.symbol);
-      if (!symbol.success) {
+      const symbol = request.params.symbol;
+      if (!isSupportedMarketSymbol(symbol)) {
         sendValidationError(response, request, 'Unsupported market symbol.');
         return;
       }
 
-      const interval = marketCandleIntervalSchema.safeParse(request.query.interval ?? '1m');
-      if (!interval.success) {
+      const interval = request.query.interval ?? '1m';
+      if (!isSupportedCandleInterval(interval)) {
         sendValidationError(response, request, 'interval must be 1m.');
         return;
       }
@@ -112,7 +107,7 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
         return;
       }
 
-      const symbolRow = await findSymbolByCode(database, symbol.data);
+      const symbolRow = await findSymbolByCode(database, symbol);
       if (!symbolRow) {
         sendValidationError(response, request, 'Market symbol is not available.');
         return;
@@ -125,7 +120,7 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
       }
 
       const candleOptions = {
-        interval: interval.data,
+        interval,
         limit: query.limit + 1,
         ...(cursor ? { cursor: { timestamp: cursor.timestamp, id: cursor.id } } : {}),
       };
@@ -137,8 +132,8 @@ export function createMarketDataRouter(options: MarketRouterOptions): Router {
         candles: page.map(
           (row): MarketCandleDto => ({
             id: row.id,
-            symbol: symbol.data,
-            interval: interval.data,
+            symbol,
+            interval,
             intervalStart: row.timestamp.toISOString(),
             intervalEnd: new Date(row.timestamp.getTime() + 60_000).toISOString(),
             open: row.open,

@@ -1,5 +1,6 @@
-import { tradingSymbolSchema, type TradingSymbol } from '@rtctp/domain';
+import type { TradingSymbol } from '@rtctp/domain';
 import { env } from '../config/env.js';
+import { isSupportedMarketSymbol } from './contracts.js';
 import type { MarketDataConfig } from './types.js';
 
 export function parseMarketDataSymbols(value: string): TradingSymbol[] {
@@ -12,7 +13,13 @@ export function parseMarketDataSymbols(value: string): TradingSymbol[] {
     throw new Error('MARKET_DATA_SYMBOLS must include at least one symbol');
   }
 
-  return symbols.map((symbol) => tradingSymbolSchema.parse(symbol));
+  return symbols.map((symbol) => {
+    if (!isSupportedMarketSymbol(symbol)) {
+      throw new Error(`Unsupported market data symbol: ${symbol}`);
+    }
+
+    return symbol;
+  });
 }
 
 export function getMarketDataConfig(): MarketDataConfig {

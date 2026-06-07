@@ -1,9 +1,5 @@
-import {
-  marketTickReceivedSchema,
-  tradingSymbolSchema,
-  type MarketTickReceived,
-  type TradingSymbol,
-} from '@rtctp/domain';
+import type { MarketTickReceived, TradingSymbol } from '@rtctp/domain';
+import { isFinancialDecimalString, isIsoDateTime, isSupportedMarketSymbol } from './contracts.js';
 
 export type CoinbaseParseResult =
   | { kind: 'ticks'; ticks: MarketTickReceived[]; ignored: number; duplicates: number }
@@ -99,28 +95,28 @@ export class CoinbaseMarketTradesParser {
       return 'ignored';
     }
 
-    const symbolResult = tradingSymbolSchema.safeParse(trade.product_id);
-    if (!symbolResult.success || !this.symbols.has(symbolResult.data)) {
+    if (!isSupportedMarketSymbol(trade.product_id) || !this.symbols.has(trade.product_id)) {
       return 'ignored';
     }
 
     if (
-      typeof trade.price !== 'string' ||
-      typeof trade.size !== 'string' ||
-      typeof trade.time !== 'string'
+      !isFinancialDecimalString(trade.price) ||
+      !isFinancialDecimalString(trade.size) ||
+      !isIsoDateTime(trade.time) ||
+      !isIsoDateTime(receivedTimestamp)
     ) {
       return 'invalid';
     }
 
     const tradeId = typeof trade.trade_id === 'string' ? trade.trade_id : undefined;
-    if (tradeId && this.seenTradeIds.has(`${symbolResult.data}:${tradeId}`)) {
+    if (tradeId && this.seenTradeIds.has(`${trade.product_id}:${tradeId}`)) {
       return 'duplicate';
     }
 
-    const tick = marketTickReceivedSchema.safeParse({
+    const tick: MarketTickReceived = {
       type: 'MarketTickReceived',
       version: 1,
-      symbol: symbolResult.data,
+      symbol: trade.product_id,
       price: trade.price,
       size: trade.size,
       providerTimestamp: trade.time,
@@ -131,17 +127,13 @@ export class CoinbaseMarketTradesParser {
           ? String(providerSequence)
           : undefined,
       tradeId,
-    });
-
-    if (!tick.success) {
-      return 'invalid';
-    }
+    };
 
     if (tradeId) {
-      this.seenTradeIds.add(`${symbolResult.data}:${tradeId}`);
+      this.seenTradeIds.add(`${trade.product_id}:${tradeId}`);
     }
 
-    return tick.data;
+    return tick;
   }
 }
 

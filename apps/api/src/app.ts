@@ -2,11 +2,7 @@ import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
-import {
-  SUPPORTED_SYMBOLS,
-  type HealthResponse,
-  type MarketProviderHealthDto,
-} from '@rtctp/domain';
+import type { HealthResponse, MarketProviderHealthDto } from '@rtctp/domain';
 import { createAuthRouter } from './auth/routes.js';
 import { env } from './config/env.js';
 import { checkDatabaseHealth } from './db/client.js';
@@ -15,6 +11,7 @@ import { sendError, sendSuccess } from './http/responses.js';
 import { logger } from './logger.js';
 import { createMarketDataRouter } from './market-data/routes.js';
 import { marketDataService } from './market-data/service.js';
+import { supportedMarketSymbols } from './market-data/contracts.js';
 import { listSymbols } from './repositories/symbols.js';
 import { createHighPrecisionTimestamp } from './time.js';
 
@@ -166,7 +163,7 @@ export function createApp(options: CreateAppOptions = {}) {
 function fallbackSymbols(degraded: boolean) {
   return {
     degraded,
-    symbols: SUPPORTED_SYMBOLS.map((symbol) => ({
+    symbols: supportedMarketSymbols.map((symbol) => ({
       symbol,
       baseAsset: symbol.split('-')[0],
       quoteAsset: symbol.split('-')[1],

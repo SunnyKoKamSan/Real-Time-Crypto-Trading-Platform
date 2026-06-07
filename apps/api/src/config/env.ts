@@ -1,5 +1,11 @@
-import 'dotenv/config';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config } from 'dotenv';
 import { z } from 'zod';
+
+const configDirectory = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(configDirectory, '../../../../.env') });
+config({ path: resolve(configDirectory, '../../.env') });
 
 const defaultMarketDataMode = process.env.NODE_ENV === 'test' ? 'fixture' : 'disabled';
 
