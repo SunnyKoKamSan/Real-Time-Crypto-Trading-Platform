@@ -10,14 +10,14 @@ describe('auth error formatting', () => {
       registerRequestSchema.parse({
         email: 'demo@example.local',
         displayName: 'Demo Trader',
-        password: '123',
+        password: '!!!',
       });
     } catch (caught) {
       error = caught;
     }
 
     expect(publicAuthError(error)).toBe(
-      'Password must be at least 12 characters and include at least one letter.',
+      'Password must be at least 8 characters, include at least one alphabetic character, and include at least one number.',
     );
   });
 });

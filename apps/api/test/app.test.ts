@@ -58,17 +58,19 @@ describe('api app', () => {
       .send({
         email: 'demo@example.local',
         displayName: 'Demo Trader',
-        password: '123',
+        password: '!!!',
       })
       .expect(400);
 
     expect(response.body.error).toMatchObject({
       code: 'VALIDATION_ERROR',
-      message: 'Password must be at least 12 characters and include at least one letter.',
+      message:
+        'Password must be at least 8 characters, include at least one alphabetic character, and include at least one number.',
       details: [
         {
           path: 'password',
-          message: 'Password must be at least 12 characters and include at least one letter.',
+          message:
+            'Password must be at least 8 characters, include at least one alphabetic character, and include at least one number.',
         },
       ],
     });

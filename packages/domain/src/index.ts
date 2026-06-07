@@ -121,10 +121,13 @@ export type ApiEnvelope<TData> = ApiSuccess<TData> | ApiError;
 
 export const passwordPolicySchema = z
   .string()
-  .min(12, 'Password must be at least 12 characters.')
+  .min(8, 'Password must be at least 8 characters.')
   .max(128, 'Password must be at most 128 characters.')
-  .refine((value) => /[A-Za-z]/.test(value), 'Password must include at least one letter.')
-  .refine((value) => /[^A-Za-z]/.test(value), 'Password must include at least one non-letter.');
+  .refine(
+    (value) => /[A-Za-z]/.test(value),
+    'Password must include at least one alphabetic character.',
+  )
+  .refine((value) => /\d/.test(value), 'Password must include at least one number.');
 
 export function validatePasswordPolicy(password: string): boolean {
   return passwordPolicySchema.safeParse(password).success;

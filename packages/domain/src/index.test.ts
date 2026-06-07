@@ -50,9 +50,10 @@ describe('financial decimal helpers', () => {
 describe('auth contracts', () => {
   it('enforces password policy boundaries', () => {
     expect(validatePasswordPolicy('LongEnoughPassword!2026')).toBe(true);
-    expect(passwordPolicySchema.safeParse('short!1').success).toBe(false);
+    expect(validatePasswordPolicy('Pass1234')).toBe(true);
+    expect(passwordPolicySchema.safeParse('short1').success).toBe(false);
     expect(passwordPolicySchema.safeParse('onlyletterslongenough').success).toBe(false);
-    expect(passwordPolicySchema.safeParse('123456789012!').success).toBe(false);
+    expect(passwordPolicySchema.safeParse('12345678').success).toBe(false);
   });
 });
 

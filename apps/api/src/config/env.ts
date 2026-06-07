@@ -21,7 +21,7 @@ const envSchema = z.object({
     .optional()
     .transform((value) => (value ? value === 'true' : process.env.NODE_ENV === 'production')),
   CSRF_HEADER_NAME: z.string().min(1).default('x-csrf-token'),
-  SEED_DEMO_PASSWORD: z.string().min(12).default('LocalDemoPassword!2026'),
+  SEED_DEMO_PASSWORD: z.string().min(8).default('LocalDemoPassword!2026'),
   MARKET_DATA_MODE: z.enum(['disabled', 'fixture', 'live']).default(defaultMarketDataMode),
   MARKET_DATA_PROVIDER: z.enum(['coinbase']).default('coinbase'),
   MARKET_DATA_SYMBOLS: z.string().min(1).default('BTC-USD,ETH-USD'),
